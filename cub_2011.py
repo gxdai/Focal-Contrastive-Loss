@@ -26,6 +26,9 @@ import os
 import tensorflow as tf
 import cv2
 slim = tf.contrib.slim
+
+
+
 def create_dataset(train_img_list, train_label_list, \
         test_img_list, test_label_list, batch_size):
   """Gets a dataset tuple with instructions for reading flowers.

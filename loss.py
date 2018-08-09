@@ -7,14 +7,14 @@ import tensorflow as tf
 def calculate_distance_and_similariy_label(features, features_, labels, labels_, pair_type):
     """
     The calculate is based on following equations
-     X: (N, M)  
+     X: (N, M)
      Y: (P, M)
 
      Each row represents one sample.
 
-     the pairwise distance between X and Y is formulated as 
+     the pairwise distance between X and Y is formulated as
 
-    
+
     TO BE CONTINUED.
 
 
@@ -58,7 +58,7 @@ def calculate_distance_and_similariy_label(features, features_, labels, labels_,
 
         pairwise_distances = tf.subtract(squared_features + squred_features_, \
                 tf.multiply(2., squared_features_))
-       
+
         # calcualte pairwise similarity labels
         num_labels = tf.shape(labels)[0]
         num_labels_ = tf.shape(labels_)[0]
@@ -72,19 +72,38 @@ def calculate_distance_and_similariy_label(features, features_, labels, labels_,
 
 
         return pairwise_distances, pairwise_similarity_labels
-    
+
     elif pair_type == 'vector':
-        
+
         pairwise_distances = tf.reduce_sum(tf.square(tf.subtract(features, features_)))
         pairwise_similarity_labels = tf.cast(tf.equal(labels, labels_), tf.float32)
 
         return pairwise_distances, pairwise_similarity_labels
 
 
+def contrastive_loss(pairwise_distances, pairwise_similarity_labels, margin):
+    """
+    formulate constrastive loss.
+    """
+
+    # positive pair loss
+    positive_pair_loss = pairwise_distances * pairwise_similarity_labels
+    positive_pair_loss = tf.reduce_mean(positive_pair_loss, name='positive_pair_loss')
+
+    # negative pair loss
+    negative_pair_loss = tf.multiply(tf.maximium(tf.subtract(margin, \
+            pairwise_distances), 0.), tf.subtract(1., pairwise_similarity_labels))
+    negative_pair_loss = tf.reduce_mean(negative_pair_loss, name='negative_pair_loss')
+
+    loss = tf.add(positive_pair_loss, negative_pair_loss, name='loss')
+
+    return loss
 
 
 
-   
 
-        
-        
+
+
+
+
+
