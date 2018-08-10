@@ -309,8 +309,8 @@ class FocalLoss(object):
 
             correlation_term = tf.matmul(features, tf.transpose(features_, perm=[1, 0]))
 
-            pairwise_distances = tf.subtract(squared_features + squred_features_, \
-                tf.multiply(2., squared_features_))
+            pairwise_distances = tf.sqrt(tf.subtract(squared_features + squred_features_, \
+                tf.multiply(2., squared_features_)))
 
             # calcualte pairwise similarity labels
             num_labels = tf.shape(labels)[0]
@@ -328,7 +328,7 @@ class FocalLoss(object):
 
         elif pair_type == 'vector':
 
-            pairwise_distances = tf.reduce_sum(tf.square(tf.subtract(features, features_)))
+            pairwise_distances = tf.sqrt(tf.reduce_sum(tf.square(tf.subtract(features, features_)), axis=1))
             pairwise_similarity_labels = tf.cast(tf.equal(labels, labels_), tf.float32)
 
             return pairwise_distances, pairwise_similarity_labels
@@ -337,15 +337,81 @@ class FocalLoss(object):
     def contrastive_loss(self, pairwise_distances, pairwise_similarity_labels):
         """
         formulate constrastive loss.
+
+            L_{ij} = Y_{ij} * d_{ij}^2 + (1 - Y_{ij}) * (max(h - d_{ij}, 0.))^2
+
+            Loss
+
+            where d_{ij} is Euclidean distance for pair (i, j)
+            Y_{ij} is similarity label. 1 for similar pair, 0 for non-similar pair.
         """
 
         # positive pair loss
-        positive_pair_loss = pairwise_distances * pairwise_similarity_labels
+        positive_pair_loss = tf.square(pairwise_distances) * pairwise_similarity_labels
         positive_pair_loss = tf.reduce_mean(positive_pair_loss, name='positive_pair_loss')
 
         # negative pair loss
-        negative_pair_loss = tf.multiply(tf.maximum(tf.subtract(self.margin, \
-            pairwise_distances), 0.), tf.subtract(1., pairwise_similarity_labels))
+        negative_pair_loss = tf.multiply(tf.square(tf.maximum(tf.subtract(self.margin, \
+            pairwise_distances), 0.)), tf.subtract(1., pairwise_similarity_labels))
+        negative_pair_loss = tf.reduce_mean(negative_pair_loss, name='negative_pair_loss')
+
+        loss = tf.add(positive_pair_loss, negative_pair_loss, name='loss')
+
+        return loss
+
+
+    def focal_contrastive_loss(self, pairwise_distances, pairwise_similarity_labels, decay_factor=1., offset=0.5):
+        """
+        formulate focal constrastive loss.
+
+            L_{ij} = Prob_{ij} * Y_{ij} * d_{ij}^2 + Prob_{ij} * (1 - Y_{ij}) * (max(h - d_{ij}, 0.))^2
+
+
+            where   d_{ij} is Euclidean distance for pair (i, j)
+                    Y_{ij} is similarity label. 1 for similar pair, 0 for non-similar pair.
+
+                    P_{ij} = sigmoid(d)
+        """
+        def linear_transformation(distances, offset, decay_factor):
+            """
+            apply a linear transformation to the distances.
+
+            return (distances - offset) / decay_factor
+
+            """
+            return (distances - offset) / decay_factor
+
+        # Apply a linear transformation for positive pairwise distance
+        positive_pairwise_distances_transformed = linear_transformation(
+                pairwise_distances, offset, decay_factor)
+
+        # convert distance into probability
+        positive_pairwise_prob = tf.sigmoid(positive_pairwise_distances_transformed)
+        # positive pair loss
+        positive_pair_loss = positive_pairwise_prob * tf.square(pairwise_distances) \
+                * pairwise_similarity_labels
+
+
+        positive_pair_loss = tf.reduce_mean(positive_pair_loss, name='positive_pair_loss')
+
+
+        # negative pairwise distance
+        negative_pairwise_distances = tf.maximum(tf.subtract(self.margin, \
+            pairwise_distances), 0.)
+
+        # Apply a linear transformation for negative pairwise distance
+        negative_pairwise_distance_transformed = linear_transformation(
+                negative_pairwise_distances, offset, decay_factor)
+
+        # convert distance into probability
+        negative_pairwise_prob = tf.sigmoid(negative_pairwise_distance_transformed)
+
+        # negative pair loss
+        negative_pair_loss = negative_pairwise_prob * tf.square(negative_pairwise_distances) *\
+                tf.subtract(1., pairwise_similarity_labels))
+
+
+
         negative_pair_loss = tf.reduce_mean(negative_pair_loss, name='negative_pair_loss')
 
         loss = tf.add(positive_pair_loss, negative_pair_loss, name='loss')
