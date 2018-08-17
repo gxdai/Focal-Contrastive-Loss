@@ -1,3 +1,4 @@
+import time
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 import tensorflow.contrib.slim.nets
@@ -10,36 +11,41 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variable_scope
-import time
 import numpy as np
+from scipy.spatial import distance
+
+
+
 import cub_2011
+import RetrievalEvaluation
 
-
-class FocalLoss(object):
+class FocalLoss:
     """
     This is for implementation of focal contrastive loss.
     """
-    def __init__(self, batch_size=32, dataset_name='cub2011', \
-            network_type='siamese_network', pair_type='vector', \
-            pretrained_model_path='./weights/inception_v3.ckpt', \
-            margin=1., num_epochs_per_decay=2., \
-            embedding_size=128, \
-            num_epochs=100, \
-            learning_rate=0.01, \
-            learning_rate_decay_type='exponential', \
-            learning_rate_decay_factor=0.94, \
-            end_learning_rate=0.0001, \
-            optimizer='rmsprop', \
-            adam_beta1=0.9, \
-            adam_beta2=0.999, \
-            opt_epsilon=1., \
-            rmsprop_momentum=0.9, \
-            rmsprop_decay=0.9, \
+    def __init__(self, batch_size=32, dataset_name='cub2011',
+            root_dir=None, image_txt=None,
+            train_test_split_txt=None, label_txt=None,
+            network_type='siamese_network', pair_type='vector',
+            pretrained_model_path='./weights/inception_v3.ckpt',
+            margin=1., num_epochs_per_decay=2.,
+            embedding_size=128,
+            num_epochs=100,
+            learning_rate=0.01,
+            learning_rate_decay_type='exponential',
+            learning_rate_decay_factor=0.94,
+            end_learning_rate=0.0001,
+            optimizer='rmsprop',
+            adam_beta1=0.9,
+            adam_beta2=0.999,
+            opt_epsilon=1.,
+            rmsprop_momentum=0.9,
+            rmsprop_decay=0.9,
             log_dir='./log',
-            exclude=['global_step', \
-                    'InceptionV3/AuxLogits/Conv2d_2b_1x1/weights', \
-                    'InceptionV3/AuxLogits/Conv2d_2b_1x1/biases', \
-                    'InceptionV3/Logits/Conv2d_1c_1x1/weights', \
+            exclude=['global_step',
+                    'InceptionV3/AuxLogits/Conv2d_2b_1x1/weights',
+                    'InceptionV3/AuxLogits/Conv2d_2b_1x1/biases',
+                    'InceptionV3/Logits/Conv2d_1c_1x1/weights',
                     'InceptionV3/Logits/Conv2d_1c_1x1/biases'
                 ]):
         """
@@ -72,6 +78,10 @@ class FocalLoss(object):
         self.pretrained_model_path = pretrained_model_path
         self.exclude = exclude
 
+        self.root_dir = root_dir
+        self.image_txt = image_txt
+        self.train_test_split_txt = train_test_split_txt
+        self.label_txt = label_txt
         # create iterators
         self.create_iterator()
         self.build_network()
@@ -213,16 +223,18 @@ class FocalLoss(object):
                 except tf.errors.OutOfRangeError:
                     break
 
+            self.evaluate(sess)
 
     def create_iterator(self):
         if self.dataset_name == 'cub2011':
+            """
             root_dir = '/raid/Guoxian_Dai/CUB_200_2011/CUB_200_2011/images'
             image_txt = '/raid/Guoxian_Dai/CUB_200_2011/CUB_200_2011/images.txt'
             train_test_split_txt = '/raid/Guoxian_Dai/CUB_200_2011/CUB_200_2011/train_test_split.txt'
             label_txt = '/raid/Guoxian_Dai/CUB_200_2011/CUB_200_2011/image_class_labels.txt'
-
+            """
             train_img_list, train_label_list, test_img_list, test_label_list \
-                = cub_2011.generate_list(root_dir, image_txt, train_test_split_txt, label_txt)
+                = cub_2011.generate_list(self.root_dir, self.image_txt, self.train_test_split_txt, self.label_txt)
 
             # prepare the total image numbers
             self.train_img_num = len(train_img_list)
@@ -408,7 +420,7 @@ class FocalLoss(object):
 
         # negative pair loss
         negative_pair_loss = negative_pairwise_prob * tf.square(negative_pairwise_distances) *\
-                tf.subtract(1., pairwise_similarity_labels))
+                tf.subtract(1., pairwise_similarity_labels)
 
 
 
@@ -417,6 +429,49 @@ class FocalLoss(object):
         loss = tf.add(positive_pair_loss, negative_pair_loss, name='loss')
 
         return loss
+
+
+    def evaluate(self, sess):
+
+        def get_feature_and_label(init_op, sess, feature_tensor, label_tensor):
+            feature_set = []
+            label_set = []
+            counter = 0
+            sess.run(init_op)
+            while True:
+                try:
+                    features, labels = sess.run([feature_tensor, label_tensor])
+                    counter += 1
+                    print("Processing the {:3d}-th batch".format(counter))
+                except tf.errors.OutOfRangeError:
+                    break
+
+                feature_set.append(features)
+                label_set.append(labels)
+
+            feature_set = np.concatenate(feature_set, axis=0)
+            label_set = np.concatenate(label_set, axis=0)
+
+            return feature_set, label_set
+
+        train_feature_set, train_label_set = \
+                get_feature_and_label(self.train_init_op, sess, self.features, self.labels)
+
+
+        test_feature_set, test_label_set = \
+                get_feature_and_label(self.test_init_op, sess, self.features, self.labels)
+
+
+        distM = distance.cdist(test_feature_set, train_feature_set)
+        nn_av, ft_av, st_av, dcg_av, e_av, map_, p_points, pre, rec, rankArray = RetrievalEvaluation.RetrievalEvaluation(distM, train_label_set, test_label_set, testMode=1)
+
+        print('The NN is %5f' % (nn_av) + 'The FT is %5f' % (ft_av) +
+                'The ST is %5f' % (st_av) + 'The DCG is %5f' % (dcg_av) +
+                'The E is %5f' % (e_av) + 'The MAP is %5f' % (map_))
+
+        print("Forward features successfully")
+
+
 
 
 

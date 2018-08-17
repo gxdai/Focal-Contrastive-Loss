@@ -56,7 +56,7 @@ def create_dataset(train_img_list, train_label_list, \
   # transform dataset
   train_dataset = train_dataset.map(map_func=parse_function, num_parallel_calls=4)
   # shuffle the dataset
-  train_dataset.shuffle(buffer_size=10000)
+  train_dataset = train_dataset.shuffle(buffer_size=10000)
   train_dataset = train_dataset.batch(batch_size)
 
 
