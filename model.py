@@ -82,11 +82,11 @@ class FocalLoss:
         self.image_txt = image_txt
         self.train_test_split_txt = train_test_split_txt
         self.label_txt = label_txt
+
+        self.is_training = tf.placeholder(tf.bool)
         # create iterators
         self.create_iterator()
         self.build_network()
-
-
 
 
 
@@ -100,10 +100,10 @@ class FocalLoss:
         if self.network_type == 'siamese_network':
 
             self.features, _ = self.inception_net(self.images, self.embedding_size, \
-                    is_training=True, reuse=False)
+                    is_training=self.is_training, reuse=False)
 
             self.features_, _ = self.inception_net(self.images_, self.embedding_size, \
-                    is_training=True, reuse=True)
+                    is_training=self.is_training, reuse=True)
 
             variables_to_restore = tf.contrib.framework.get_variables_to_restore(exclude=self.exclude)
 
@@ -216,7 +216,7 @@ class FocalLoss:
 
             while True:
                 try:
-                    _, loss_value, loss_sum_ = sess.run([train_op, self.loss, self.loss_sum])
+                    _, loss_value, loss_sum_ = sess.run([train_op, self.loss, self.loss_sum], feed_dict={self.is_training: True})
                     counter += 1
                     print("Epoch [{} / {}], step {}, Loss: {}".format(epoch, self.num_epochs, counter, loss_value))
 
@@ -440,7 +440,7 @@ class FocalLoss:
             sess.run(init_op)
             while True:
                 try:
-                    features, labels = sess.run([feature_tensor, label_tensor])
+                    features, labels = sess.run([feature_tensor, label_tensor], feed_dict={self.is_training: False})
                     counter += 1
                     print("Processing the {:3d}-th batch".format(counter))
                 except tf.errors.OutOfRangeError:
@@ -465,17 +465,10 @@ class FocalLoss:
         distM = distance.cdist(test_feature_set, train_feature_set)
         nn_av, ft_av, st_av, dcg_av, e_av, map_, p_points, pre, rec, rankArray = RetrievalEvaluation.RetrievalEvaluation(distM, train_label_set, test_label_set, testMode=1)
 
-        print('The NN is %5f' % (nn_av) + 'The FT is %5f' % (ft_av) +
-                'The ST is %5f' % (st_av) + 'The DCG is %5f' % (dcg_av) +
-                'The E is %5f' % (e_av) + 'The MAP is %5f' % (map_))
-
-        print("Forward features successfully")
-
-
-
-
-
-
+        print(('The NN is {:5.5f}\nThe FT is {:5.5f}\n' +
+              'The ST is {:5.5f}\nThe DCG is {:5.5f}\n' +
+              'The E is {:5.5f}\nThe MAP {:5.5f}\n').format(
+                  nn_av, ft_av, st_av, dcg_av, e_av, map_))
 
 
 
