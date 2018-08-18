@@ -12,7 +12,8 @@ step = 0.02
 # sigma control the weight decay rate.
 sigma_1 = 0.1 
 sigma_2 = 0.15
-dist = np.arange(0., margin, step) 
+end_point = 5.
+dist = np.arange(0., end_point, step) 
 offset = margin/2.
 def weight_func(input_x, offset, sigma):
     """
@@ -25,7 +26,7 @@ def weight_func(input_x, offset, sigma):
         the weighted distace
     """
 
-    return  1. / (1. + np.exp(-1. * (input_x - offset) / sigma))
+    return  2. / (1. + np.exp(-1. * (input_x - offset) / sigma))
 
 weight = weight_func(dist, offset, sigma_1)
 weight_2 = weight_func(dist, offset, sigma_2)
