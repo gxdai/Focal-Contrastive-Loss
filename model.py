@@ -1,3 +1,8 @@
+import time
+import os
+import datetime
+import math
+
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 import tensorflow.contrib.slim.nets
@@ -10,36 +15,42 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variable_scope
-import time
 import numpy as np
+from scipy.spatial import distance
 import cub_2011
-
+import RetrievalEvaluation
 
 class FocalLoss(object):
     """
     This is for implementation of focal contrastive loss.
     """
-    def __init__(self, batch_size=32, dataset_name='cub2011', \
-            network_type='siamese_network', pair_type='vector', \
-            pretrained_model_path='./weights/inception_v3.ckpt', \
-            margin=1., num_epochs_per_decay=2., \
-            embedding_size=128, \
-            num_epochs=100, \
-            learning_rate=0.01, \
-            learning_rate_decay_type='exponential', \
-            learning_rate_decay_factor=0.94, \
-            end_learning_rate=0.0001, \
-            optimizer='rmsprop', \
-            adam_beta1=0.9, \
-            adam_beta2=0.999, \
-            opt_epsilon=1., \
-            rmsprop_momentum=0.9, \
-            rmsprop_decay=0.9, \
+    def __init__(self, batch_size=128, dataset_name='cub2011',
+            network_type='siamese_network', pair_type='vector',
+            pretrained_model_path='./weights/inception_v3.ckpt',
+            margin=1., num_epochs_per_decay=2.,
+            root_dir = '/raid/Guoxian_Dai/CUB_200_2011/CUB_200_2011/images',
+            image_txt = '/raid/Guoxian_Dai/CUB_200_2011/CUB_200_2011/images.txt',
+            train_test_split_txt = '/raid/Guoxian_Dai/CUB_200_2011/CUB_200_2011/train_test_split.txt',
+            label_txt = '/raid/Guoxian_Dai/CUB_200_2011/CUB_200_2011/image_class_labels.txt',
+            embedding_size=128,
+            num_epochs=100,
+            learning_rate=0.01,
+            learning_rate_decay_type='exponential',
+            learning_rate_decay_factor=0.94,
+            end_learning_rate=0.0001,
+            optimizer='rmsprop',
+            adam_beta1=0.9, adam_beta2=0.999,
+            opt_epsilon=1.,
+            rmsprop_momentum=0.9,
+            momentum=0.9,
+            rmsprop_decay=0.9,
             log_dir='./log',
-            exclude=['global_step', \
-                    'InceptionV3/AuxLogits/Conv2d_2b_1x1/weights', \
-                    'InceptionV3/AuxLogits/Conv2d_2b_1x1/biases', \
-                    'InceptionV3/Logits/Conv2d_1c_1x1/weights', \
+            ckpt_dir='checkpoint',
+            model_name='model',
+            exclude=['global_step',
+                    'InceptionV3/AuxLogits/Conv2d_2b_1x1/weights',
+                    'InceptionV3/AuxLogits/Conv2d_2b_1x1/biases',
+                    'InceptionV3/Logits/Conv2d_1c_1x1/weights',
                     'InceptionV3/Logits/Conv2d_1c_1x1/biases'
                 ]):
         """
@@ -68,15 +79,29 @@ class FocalLoss(object):
         self.adam_beta2 = adam_beta2
         self.opt_epsilon = opt_epsilon
         self.rmsprop_momentum = rmsprop_momentum
+        self.momentum = momentum
         self.rmsprop_decay = rmsprop_decay
         self.pretrained_model_path = pretrained_model_path
         self.exclude = exclude
+        self.ckpt_dir = ckpt_dir
+        self.model_name = model_name
+
+
+	self.root_dir = root_dir
+        self.image_txt = image_txt
+        self.train_test_split_txt = train_test_split_txt
+        self.label_txt = label_txt 
+
+        # create directory
+        self.check_and_create_path(self.ckpt_dir)
+
+	self.is_training = tf.placeholder(tf.bool)
 
         # create iterators
         self.create_iterator()
         self.build_network()
 
-
+        self.saver = tf.train.Saver()
 
 
 
@@ -90,10 +115,10 @@ class FocalLoss(object):
         if self.network_type == 'siamese_network':
 
             self.features, _ = self.inception_net(self.images, self.embedding_size, \
-                    is_training=True, reuse=False)
+                    is_training=self.is_training, reuse=False)
 
             self.features_, _ = self.inception_net(self.images_, self.embedding_size, \
-                    is_training=True, reuse=True)
+                    is_training=self.is_training, reuse=True)
 
             variables_to_restore = tf.contrib.framework.get_variables_to_restore(exclude=self.exclude)
 
@@ -103,7 +128,8 @@ class FocalLoss(object):
                     = self.calculate_distance_and_similarity_label(\
                     self.features, self.features_, self.labels, self.labels_, self.pair_type)
 
-            self.loss = self.contrastive_loss(pairwise_distances, pairwise_similarity_labels)
+            self.loss, self.positive_pair_loss, self.negative_pair_loss, self.debug_label\
+                    = self.contrastive_loss(pairwise_distances, pairwise_similarity_labels)
 
             self.loss_sum = tf.summary.scalar('loss', self.loss)
 
@@ -177,8 +203,13 @@ class FocalLoss(object):
         return optimizer
 
 
-
-
+    def check_and_create_path(self, path):
+        """
+        check the eixstence of path.
+        if path doesn't exist, create it.
+        """
+        if not os.path.isdir(path):
+            os.makedirs(path)
 
     def train(self, sess):
         """
@@ -189,29 +220,178 @@ class FocalLoss(object):
         train_op = optimizer.minimize(self.loss)
         sess.run(tf.global_variables_initializer())
         self.init_fn(sess)
-        counter = 0
+        batch_num = int(self.train_img_num / self.batch_size)
+
+        model_file = os.path.join(self.ckpt_dir, self.model_name)
+        print(model_file)
+        time.sleep(10)
+        saver = tf.train.Saver()
+
+        for epoch in range(self.num_epochs):
+            print("*"*50 + '\n')
+            print("initialize the train_init_op")
+            sess.run([self.train_init_op, self.train_init_op_])
+            batch_idx = 0
+            while True:
+                try:
+                    _, loss_value, loss_p, loss_n, loss_sum_, debug_label, label, label_ \
+                            = sess.run([train_op, self.loss, self.positive_pair_loss,
+                                self.negative_pair_loss, self.loss_sum, self.debug_label, self.labels, self.labels_])
+                    batch_idx += 1
+                    print(("{}: Epoch [{:3d}/{:3d}] [{:3d}/{:3d}], Loss: {:6.5f}, " +
+                            "Loss positive pair: {:6.5f}, Loss negative pair: {:6.5f}").format(
+                        str(datetime.datetime.now()), epoch, self.num_epochs,
+                        batch_idx, batch_num, loss_value, loss_p, loss_n))
+
+                    if math.isnan(loss_value):
+                        print("The loss is nan")
+                        break
+                    """
+                    print(debug_label)
+                    print(label==label_)
+                    print("saving the model")
+                    """
+
+                except tf.errors.OutOfRangeError:
+                    break
+
+    	    self.evaluate_online(sess)
+            saver.save(sess, model_file, global_step=epoch)
+
+    def get_checkpoint_file(self):
+        ckpt = tf.train.get_checkpoint_state(self.ckpt_dir)
+        if ckpt and ckpt.model_checkpoint_path:
+            return ckpt
+        else:
+            return None
+
+    def evaluate_online(self, sess):
+
+        def get_feature_and_label(init_op, sess, feature_tensor, label_tensor):
+            feature_set = []
+            label_set = []
+            counter = 0
+            sess.run(init_op)
+            while True:
+                try:
+                    features, labels = sess.run([feature_tensor, label_tensor], feed_dict={self.is_training: False})
+                    counter += 1
+                    print("Processing the {:3d}-th batch".format(counter))
+                except tf.errors.OutOfRangeError:
+                    break
+
+                feature_set.append(features)
+                label_set.append(labels)
+
+            feature_set = np.concatenate(feature_set, axis=0)
+            label_set = np.concatenate(label_set, axis=0)
+
+            return feature_set, label_set
+
+        train_feature_set, train_label_set = \
+                get_feature_and_label(self.train_init_op, sess, self.features, self.labels)
+
+
+        test_feature_set, test_label_set = \
+                get_feature_and_label(self.test_init_op, sess, self.features, self.labels)
+
+
+        distM = distance.cdist(test_feature_set, train_feature_set)
+        nn_av, ft_av, st_av, dcg_av, e_av, map_, p_points, pre, rec, rankArray = RetrievalEvaluation.RetrievalEvaluation(distM, train_label_set, test_label_set, testMode=1)
+
+        print(('The NN is {:5.5f}\nThe FT is {:5.5f}\n' +
+              'The ST is {:5.5f}\nThe DCG is {:5.5f}\n' +
+              'The E is {:5.5f}\nThe MAP {:5.5f}\n').format(
+                  nn_av, ft_av, st_av, dcg_av, e_av, map_))
+
+
+
+    def evaluate(self, sess):
+        """
+        training process.
+        """
 
         """
         for var in variables_to_restore:
             print(var.name)
         """
 
+        print("Process training data")
+        train_feature_set = []
+        train_label_set = []
+        batch_num = int(self.test_img_num / self.batch_size)
+
+        ckpt = self.get_checkpoint_file()
+        sess.run(tf.global_variables_initializer())
+        sess.run(self.train_init_op)
+        if ckpt is None:
+            raise IOError("No check point file found")
+        else:
+            self.saver.restore(sess, ckpt.model_checkpoint_path)
+
+        # counting batches
+        batch_idx = 0
+        batch_num = int(self.train_img_num / self.batch_size)
+        while True:
+
+            try:
 
 
+                features, labels = sess.run([self.features, self.labels])
 
-        for epoch in range(self.num_epochs):
-            print("*"*50 + '\n')
-            print("initialize the train_init_op")
-            sess.run([self.train_init_op, self.train_init_op_])
+            except tf.errors.OutOfRangeError:
+                break
 
-            while True:
-                try:
-                    _, loss_value, loss_sum_ = sess.run([train_op, self.loss, self.loss_sum])
-                    counter += 1
-                    print("Epoch [{} / {}], step {}, Loss: {}".format(epoch, self.num_epochs, counter, loss_value))
+            batch_idx += 1
+            train_feature_set.append(features)
+            train_label_set.append(labels)
+            print("Processing batch [{:3d}/{:3d}]".format(batch_idx, batch_num))
 
-                except tf.errors.OutOfRangeError:
-                    break
+        train_feature_set = np.concatenate(train_feature_set, axis=0)
+
+        # label should be int type
+        train_label_set = np.concatenate(train_label_set, axis=0).astype(np.int)
+
+        print("Finish processing training data")
+
+        print("Process test data")
+        test_feature_set = []
+        test_label_set = []
+        batch_num = int(self.test_img_num / self.batch_size)
+
+        sess.run(self.test_init_op)
+        # counting batches
+        batch_idx = 0
+        batch_num = int(self.test_img_num / self.batch_size)
+        while True:
+            try:
+
+                features, labels = sess.run([self.features, self.labels])
+                batch_idx += 1
+            except tf.errors.OutOfRangeError:
+                break
+
+            test_feature_set.append(features)
+            test_label_set.append(labels)
+            print("Processing batch [{:3d}/{:3d}]".format(batch_idx, batch_num))
+
+
+        test_feature_set = np.concatenate(test_feature_set, axis=0)
+
+        # label should be int type.
+        test_label_set = np.concatenate(test_label_set, axis=0).astype(np.int)
+        print("Finish processing testing data")
+
+        dist_matrix = distance.cdist(test_feature_set, train_feature_set)
+        nn_av, ft_av, st_av, dcg_av, e_av, map_, p_points, pre, rec, rankArray = \
+                RetrievalEvaluation.RetrievalEvaluation(dist_matrix, train_label_set, test_label_set, testMode=1)
+
+        print 'The NN is %5f' % (nn_av)
+        print 'The FT is %5f' % (ft_av)
+        print 'The ST is %5f' % (st_av)
+        print 'The DCG is %5f' % (dcg_av)
+        print 'The E is %5f' % (e_av)
+        print 'The MAP is %5f' % (map_)
 
 
     def create_iterator(self):
@@ -222,7 +402,8 @@ class FocalLoss(object):
             label_txt = '/raid/Guoxian_Dai/CUB_200_2011/CUB_200_2011/image_class_labels.txt'
 
             train_img_list, train_label_list, test_img_list, test_label_list \
-                = cub_2011.generate_list(root_dir, image_txt, train_test_split_txt, label_txt)
+                = cub_2011.generate_list(self.root_dir, self.image_txt, 
+					self.train_test_split_txt, self.label_txt)
 
             # prepare the total image numbers
             self.train_img_num = len(train_img_list)
@@ -260,6 +441,7 @@ class FocalLoss(object):
         return logits, end_points
 
     def calculate_distance_and_similarity_label(self, features, features_, labels, labels_, pair_type):
+
         """
         The calculate is based on following equations
         X: (N, M)
@@ -357,7 +539,7 @@ class FocalLoss(object):
 
         loss = tf.add(positive_pair_loss, negative_pair_loss, name='loss')
 
-        return loss
+        return loss, positive_pair_loss, negative_pair_loss, pairwise_similarity_labels
 
 
     def focal_contrastive_loss(self, pairwise_distances, pairwise_similarity_labels, decay_factor=1., offset=0.5):
@@ -408,7 +590,7 @@ class FocalLoss(object):
 
         # negative pair loss
         negative_pair_loss = negative_pairwise_prob * tf.square(negative_pairwise_distances) *\
-                tf.subtract(1., pairwise_similarity_labels))
+                tf.subtract(1., pairwise_similarity_labels)
 
 
 
