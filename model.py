@@ -1,11 +1,8 @@
 import time
-<<<<<<< HEAD
 import os
 import datetime
 import math
 
-=======
->>>>>>> b61d37384c942b774cfe89c9a1542978155fa9ef
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 import tensorflow.contrib.slim.nets
@@ -20,13 +17,10 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variable_scope
 import numpy as np
 from scipy.spatial import distance
-<<<<<<< HEAD
 import cub_2011
 import RetrievalEvaluation
-=======
 
 
->>>>>>> b61d37384c942b774cfe89c9a1542978155fa9ef
 
 import cub_2011
 import RetrievalEvaluation
@@ -35,7 +29,6 @@ class FocalLoss:
     """
     This is for implementation of focal contrastive loss.
     """
-<<<<<<< HEAD
     def __init__(self, batch_size=128, dataset_name='cub2011',
             network_type='siamese_network', pair_type='vector',
             pretrained_model_path='./weights/inception_v3.ckpt',
@@ -44,14 +37,6 @@ class FocalLoss:
             image_txt = '/raid/Guoxian_Dai/CUB_200_2011/CUB_200_2011/images.txt',
             train_test_split_txt = '/raid/Guoxian_Dai/CUB_200_2011/CUB_200_2011/train_test_split.txt',
             label_txt = '/raid/Guoxian_Dai/CUB_200_2011/CUB_200_2011/image_class_labels.txt',
-=======
-    def __init__(self, batch_size=32, dataset_name='cub2011',
-            root_dir=None, image_txt=None,
-            train_test_split_txt=None, label_txt=None,
-            network_type='siamese_network', pair_type='vector',
-            pretrained_model_path='./weights/inception_v3.ckpt',
-            margin=1., num_epochs_per_decay=2.,
->>>>>>> b61d37384c942b774cfe89c9a1542978155fa9ef
             embedding_size=128,
             num_epochs=100,
             learning_rate=0.01,
@@ -59,7 +44,6 @@ class FocalLoss:
             learning_rate_decay_factor=0.94,
             end_learning_rate=0.0001,
             optimizer='rmsprop',
-<<<<<<< HEAD
             adam_beta1=0.9, adam_beta2=0.999,
             opt_epsilon=1.,
             rmsprop_momentum=0.9,
@@ -68,14 +52,6 @@ class FocalLoss:
             log_dir='./log',
             ckpt_dir='checkpoint',
             model_name='model',
-=======
-            adam_beta1=0.9,
-            adam_beta2=0.999,
-            opt_epsilon=1.,
-            rmsprop_momentum=0.9,
-            rmsprop_decay=0.9,
-            log_dir='./log',
->>>>>>> b61d37384c942b774cfe89c9a1542978155fa9ef
             exclude=['global_step',
                     'InceptionV3/AuxLogits/Conv2d_2b_1x1/weights',
                     'InceptionV3/AuxLogits/Conv2d_2b_1x1/biases',
@@ -307,17 +283,12 @@ class FocalLoss:
             sess.run(init_op)
             while True:
                 try:
-<<<<<<< HEAD
-                    features, labels = sess.run([feature_tensor, label_tensor], feed_dict={self.is_training: False})
-=======
                     _, loss_value, loss_sum_ = sess.run([train_op, self.loss, self.loss_sum], feed_dict={self.is_training: True})
->>>>>>> b61d37384c942b774cfe89c9a1542978155fa9ef
                     counter += 1
                     print("Processing the {:3d}-th batch".format(counter))
                 except tf.errors.OutOfRangeError:
                     break
 
-<<<<<<< HEAD
                 feature_set.append(features)
                 label_set.append(labels)
 
@@ -431,9 +402,6 @@ class FocalLoss:
         print 'The E is %5f' % (e_av)
         print 'The MAP is %5f' % (map_)
 
-=======
-            self.evaluate(sess)
->>>>>>> b61d37384c942b774cfe89c9a1542978155fa9ef
 
     def create_iterator(self):
         if self.dataset_name == 'cub2011':
@@ -444,13 +412,8 @@ class FocalLoss:
             label_txt = '/raid/Guoxian_Dai/CUB_200_2011/CUB_200_2011/image_class_labels.txt'
             """
             train_img_list, train_label_list, test_img_list, test_label_list \
-<<<<<<< HEAD
                 = cub_2011.generate_list(self.root_dir, self.image_txt, 
 					self.train_test_split_txt, self.label_txt)
-=======
-                = cub_2011.generate_list(self.root_dir, self.image_txt, self.train_test_split_txt, self.label_txt)
->>>>>>> b61d37384c942b774cfe89c9a1542978155fa9ef
-
             # prepare the total image numbers
             self.train_img_num = len(train_img_list)
             self.test_img_num = len(test_img_list)
