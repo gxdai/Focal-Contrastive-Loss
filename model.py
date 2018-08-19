@@ -38,8 +38,9 @@ class FocalLoss:
             train_test_split_txt = '/raid/Guoxian_Dai/CUB_200_2011/CUB_200_2011/train_test_split.txt',
             label_txt = '/raid/Guoxian_Dai/CUB_200_2011/CUB_200_2011/image_class_labels.txt',
             embedding_size=128,
+            focal_decay_factor=1.,
             num_epochs=100,
-            learning_rate=0.01,
+            learning_rate=0.001,
             learning_rate_decay_type='exponential',
             learning_rate_decay_factor=0.94,
             end_learning_rate=0.0001,
@@ -52,11 +53,14 @@ class FocalLoss:
             log_dir='./log',
             ckpt_dir='checkpoint',
             model_name='model',
+            loss_type='contrastive_loss',
             exclude=['global_step',
                     'InceptionV3/AuxLogits/Conv2d_2b_1x1/weights',
                     'InceptionV3/AuxLogits/Conv2d_2b_1x1/biases',
                     'InceptionV3/Logits/Conv2d_1c_1x1/weights',
-                    'InceptionV3/Logits/Conv2d_1c_1x1/biases'
+                    'InceptionV3/Logits/Conv2d_1c_1x1/biases',
+                    'InceptionV3/embedding/Conv2d_1c_1x1/biases',
+                    'InceptionV3/embedding/Conv2d_1c_1x1/weights'
                 ]):
         """
         initialize the class.
@@ -88,14 +92,16 @@ class FocalLoss:
         self.rmsprop_decay = rmsprop_decay
         self.pretrained_model_path = pretrained_model_path
         self.exclude = exclude
-        self.ckpt_dir = ckpt_dir
         self.model_name = model_name
+        self.loss_type = loss_type
+        self.focal_decay_factor = focal_decay_factor
 
-
+        self.ckpt_dir = os.path.join(ckpt_dir, self.network_type,
+                                    self.pair_type, self.loss_type)
 	self.root_dir = root_dir
         self.image_txt = image_txt
         self.train_test_split_txt = train_test_split_txt
-        self.label_txt = label_txt 
+        self.label_txt = label_txt
 
         # create directory
         self.check_and_create_path(self.ckpt_dir)
@@ -109,6 +115,17 @@ class FocalLoss:
 
         self.is_training = tf.placeholder(tf.bool)
         # create iterators
+
+        print("Configuration information")
+        print("*"*20+'\n')
+        print("optimimizer = {:20}".format(self.optimizer))
+        print("learning_rate = {:10.5f}".format(self.learning_rate))
+        print("learning_rate_decay_type = {:20}".format(self.learning_rate_decay_type))
+        print("loss_type = {:20}".format(self.loss_type))
+        print("margin = {:20}".format(self.margin))
+
+
+
         self.create_iterator()
         self.build_network()
 
@@ -120,27 +137,42 @@ class FocalLoss:
         """
         self.global_step = tf.Variable(0, name='global_step', trainable=False)
 
+        self.features, _ = self.inception_net(inputs=self.images, embedding_size=self.embedding_size, \
+                                              is_training=self.is_training, reuse=False)
 
-        if self.network_type == 'siamese_network':
+        self.features_, _ = self.inception_net(inputs=self.images_, embedding_size=self.embedding_size, \
+                                                is_training=self.is_training, reuse=True)
 
-            self.features, _ = self.inception_net(self.images, self.embedding_size, \
-                    is_training=self.is_training, reuse=False)
+        variables_to_restore = tf.contrib.framework.get_variables_to_restore(exclude=self.exclude)
 
-            self.features_, _ = self.inception_net(self.images_, self.embedding_size, \
-                    is_training=self.is_training, reuse=True)
+        self.init_fn = tf.contrib.framework.assign_from_checkpoint_fn(self.pretrained_model_path, variables_to_restore)
 
-            variables_to_restore = tf.contrib.framework.get_variables_to_restore(exclude=self.exclude)
+        pairwise_distances, pairwise_similarity_labels \
+                            = self.calculate_distance_and_similarity_label(
+                                        self.features,
+                                        self.features_,
+                                        self.labels,
+                                        self.labels_,
+                                        self.pair_type)
 
-            self.init_fn = tf.contrib.framework.assign_from_checkpoint_fn(self.pretrained_model_path, variables_to_restore)
 
-            pairwise_distances, pairwise_similarity_labels \
-                    = self.calculate_distance_and_similarity_label(\
-                    self.features, self.features_, self.labels, self.labels_, self.pair_type)
-
+        print("\n\t\t************************")
+        if self.loss_type == 'contrastive_loss':
+            print("\t\t*Build contrastive loss*")
             self.loss, self.positive_pair_loss, self.negative_pair_loss, self.debug_label\
                     = self.contrastive_loss(pairwise_distances, pairwise_similarity_labels)
-
             self.loss_sum = tf.summary.scalar('loss', self.loss)
+
+        elif self.loss_type == 'focal_contrastive_loss':
+            print("\t\t*Build focal contrastive loss*")
+            offset = self.margin / 2.
+            self.loss, self.positive_pair_loss, self.negative_pair_loss, self.debug_label\
+                    = self.focal_contrastive_loss(pairwise_distances, pairwise_similarity_labels,
+                                                  focal_decay_factor=self.focal_decay_factor,
+                                                  offset=offset)
+            self.loss_sum = tf.summary.scalar('loss', self.loss)
+
+        print("\t\t******************************")
 
 
     def configure_learning_rate(self):
@@ -220,6 +252,37 @@ class FocalLoss:
         if not os.path.isdir(path):
             os.makedirs(path)
 
+    def fc_layer(self,
+                inputs,
+                embedding_size=128,
+                is_training=True,
+                dropout_keep_prob=0.8,
+                depth_multiplier=1.0,
+                prediction_fn=slim.softmax,
+                spatial_squeeze=True,
+                reuse=None,
+                scope='InceptionV3',
+                global_pool=False):
+
+        if depth_multiplier <= 0:
+            raise ValueError('depth_multiplier is not greater than zero.')
+        depth = lambda d: max(int(d * depth_multiplier), min_depth)
+
+        with tf.variable_scope(scope, 'InceptionV3', [inputs], reuse=reuse) as scope:
+            with slim.arg_scope([slim.batch_norm, slim.dropout],
+                                is_training=is_training):
+                                # Final pooling and prediction
+                with tf.variable_scope('embedding'):
+                    embedding_vector = slim.conv2d(inputs, embedding_size, [1, 1], activation_fn=None,
+                                                normalizer_fn=None, scope='Conv2d_1c_1x1')
+
+                if spatial_squeeze:
+                    embedding_vector = tf.squeeze(embedding_vector, [1, 2], name='SpatialSqueeze')
+
+        return embedding_vector
+
+
+
     def train(self, sess):
         """
         training process.
@@ -232,8 +295,6 @@ class FocalLoss:
         batch_num = int(self.train_img_num / self.batch_size)
 
         model_file = os.path.join(self.ckpt_dir, self.model_name)
-        print(model_file)
-        time.sleep(10)
         saver = tf.train.Saver()
 
         for epoch in range(self.num_epochs):
@@ -245,26 +306,24 @@ class FocalLoss:
                 try:
                     _, loss_value, loss_p, loss_n, loss_sum_, debug_label, label, label_ \
                             = sess.run([train_op, self.loss, self.positive_pair_loss,
-                                self.negative_pair_loss, self.loss_sum, self.debug_label, self.labels, self.labels_])
+                                        self.negative_pair_loss, self.loss_sum,
+                                        self.debug_label, self.labels, self.labels_],
+                                        feed_dict={self.is_training: True})
                     batch_idx += 1
-                    print(("{}: Epoch [{:3d}/{:3d}] [{:3d}/{:3d}], Loss: {:6.5f}, " +
+                    if batch_idx % 5 == 0:
+                        print(("{}: Epoch [{:3d}/{:3d}] [{:3d}/{:3d}], Loss: {:6.5f}, " +
                             "Loss positive pair: {:6.5f}, Loss negative pair: {:6.5f}").format(
-                        str(datetime.datetime.now()), epoch, self.num_epochs,
-                        batch_idx, batch_num, loss_value, loss_p, loss_n))
+                            str(datetime.datetime.now()), epoch, self.num_epochs,
+                                batch_idx, batch_num, loss_value, loss_p, loss_n))
 
                     if math.isnan(loss_value):
                         print("The loss is nan")
                         break
-                    """
-                    print(debug_label)
-                    print(label==label_)
-                    print("saving the model")
-                    """
 
                 except tf.errors.OutOfRangeError:
                     break
-
-    	    self.evaluate_online(sess)
+            if epoch % 5 == 0 and epoch > 0:
+    	        self.evaluate_online(sess, test_mode=2)
             saver.save(sess, model_file, global_step=epoch)
 
     def get_checkpoint_file(self):
@@ -274,7 +333,7 @@ class FocalLoss:
         else:
             return None
 
-    def evaluate_online(self, sess):
+    def evaluate_online(self, sess, test_mode=1):
 
         def get_feature_and_label(init_op, sess, feature_tensor, label_tensor):
             feature_set = []
@@ -283,7 +342,7 @@ class FocalLoss:
             sess.run(init_op)
             while True:
                 try:
-                    _, loss_value, loss_sum_ = sess.run([train_op, self.loss, self.loss_sum], feed_dict={self.is_training: True})
+                    features, labels = sess.run([self.features, self.labels], feed_dict={self.is_training: False})
                     counter += 1
                     print("Processing the {:3d}-th batch".format(counter))
                 except tf.errors.OutOfRangeError:
@@ -297,16 +356,27 @@ class FocalLoss:
 
             return feature_set, label_set
 
-        train_feature_set, train_label_set = \
+
+        if test_mode == 1:
+            train_feature_set, train_label_set = \
                 get_feature_and_label(self.train_init_op, sess, self.features, self.labels)
 
 
-        test_feature_set, test_label_set = \
+            test_feature_set, test_label_set = \
                 get_feature_and_label(self.test_init_op, sess, self.features, self.labels)
 
 
-        distM = distance.cdist(test_feature_set, train_feature_set)
-        nn_av, ft_av, st_av, dcg_av, e_av, map_, p_points, pre, rec, rankArray = RetrievalEvaluation.RetrievalEvaluation(distM, train_label_set, test_label_set, testMode=1)
+            distM = distance.cdist(test_feature_set, train_feature_set)
+            nn_av, ft_av, st_av, dcg_av, e_av, map_, p_points, pre, rec, rankArray = RetrievalEvaluation.RetrievalEvaluation(distM, train_label_set, test_label_set, testMode=1)
+
+        elif test_mode == 2:
+
+            test_feature_set, test_label_set = \
+                get_feature_and_label(self.test_init_op, sess, self.features, self.labels)
+            distM = distance.cdist(test_feature_set, test_feature_set)
+            nn_av, ft_av, st_av, dcg_av, e_av, map_, p_points, pre, rec, rankArray = RetrievalEvaluation.RetrievalEvaluation(distM, test_label_set, test_label_set, testMode=2)
+
+
 
         print(('The NN is {:5.5f}\nThe FT is {:5.5f}\n' +
               'The ST is {:5.5f}\nThe DCG is {:5.5f}\n' +
@@ -412,7 +482,7 @@ class FocalLoss:
             label_txt = '/raid/Guoxian_Dai/CUB_200_2011/CUB_200_2011/image_class_labels.txt'
             """
             train_img_list, train_label_list, test_img_list, test_label_list \
-                = cub_2011.generate_list(self.root_dir, self.image_txt, 
+                = cub_2011.generate_half_split_list(self.root_dir, self.image_txt,
 					self.train_test_split_txt, self.label_txt)
             # prepare the total image numbers
             self.train_img_num = len(train_img_list)
@@ -428,7 +498,9 @@ class FocalLoss:
                 cub_2011.create_dataset(train_img_list, train_label_list, \
                     test_img_list, test_label_list, self.batch_size)
 
-    def inception_net(self, inputs, num_classes=1000, is_training=False, reuse=False):
+    def inception_net(self, inputs, num_classes=1000,
+                      embedding_size=128, is_training=False,
+                      reuse=False):
         """
         Args:
             model_name: "inception"
@@ -445,9 +517,14 @@ class FocalLoss:
         inception = tensorflow.contrib.slim.nets.inception
         with slim.arg_scope(slim.nets.inception.inception_v3_arg_scope()):
             logits, end_points = inception.inception_v3(inputs, num_classes=num_classes,
-                    is_training=is_training, reuse=reuse)
+                                                        is_training=is_training, reuse=reuse,
+                                                        spatial_squeeze=False)
 
-        return logits, end_points
+            embedding_vector = self.fc_layer(logits, embedding_size=embedding_size,
+                                            is_training=is_training, reuse=reuse,
+                                            spatial_squeeze=True)
+
+        return embedding_vector, end_points
 
     def calculate_distance_and_similarity_label(self, features, features_, labels, labels_, pair_type):
 
@@ -486,9 +563,11 @@ class FocalLoss:
             return tf.expand(tf.reduce_sum(tf.square(features), axis=1), axis=1)
 
 
-
+        print("\n\t\t***********************")
         if pair_type is None or pair_type == 'matrix':
+            print("\t\tthe pair_type is matrix")
 
+            print("\t\t***********************\n")
             # reshape label for convenience
             labels = tf.reshape(labels, [-1, 1])
             labels_ = tf.reshape(labels_, [-1, 1])
@@ -519,6 +598,9 @@ class FocalLoss:
 
         elif pair_type == 'vector':
 
+            print("\t\tthe pair_type is vector")
+
+            print("\t\t***********************\n")
             pairwise_distances = tf.sqrt(tf.reduce_sum(tf.square(tf.subtract(features, features_)), axis=1))
             pairwise_similarity_labels = tf.cast(tf.equal(labels, labels_), tf.float32)
 
@@ -550,8 +632,10 @@ class FocalLoss:
 
         return loss, positive_pair_loss, negative_pair_loss, pairwise_similarity_labels
 
-
-    def focal_contrastive_loss(self, pairwise_distances, pairwise_similarity_labels, decay_factor=1., offset=0.5):
+    def focal_contrastive_loss(self, pairwise_distances,
+                                pairwise_similarity_labels,
+                                focal_decay_factor=1.,
+                                offset=0.5):
         """
         formulate focal constrastive loss.
 
@@ -570,47 +654,42 @@ class FocalLoss:
             return (distances - offset) / decay_factor
 
             """
-            return (distances - offset) / decay_factor
+            return tf.divide(tf.subtract(distances,  offset), decay_factor)
 
         # Apply a linear transformation for positive pairwise distance
-        positive_pairwise_distances_transformed = linear_transformation(
-                pairwise_distances, offset, decay_factor)
+        positive_pairwise_distances_transformed = \
+                tf.divide(tf.subtract(pairwise_distances, offset), focal_decay_factor)
 
         # convert distance into probability
-        positive_pairwise_prob = tf.sigmoid(positive_pairwise_distances_transformed)
+        positive_pairwise_prob = 2. * tf.sigmoid(positive_pairwise_distances_transformed)
         # positive pair loss
         positive_pair_loss = positive_pairwise_prob * tf.square(pairwise_distances) \
                 * pairwise_similarity_labels
 
-
         positive_pair_loss = tf.reduce_mean(positive_pair_loss, name='positive_pair_loss')
-
 
         # negative pairwise distance
         negative_pairwise_distances = tf.maximum(tf.subtract(self.margin, \
             pairwise_distances), 0.)
 
         # Apply a linear transformation for negative pairwise distance
-        negative_pairwise_distance_transformed = linear_transformation(
-                negative_pairwise_distances, offset, decay_factor)
+        negative_pairwise_distance_transformed = \
+                tf.divide(tf.subtract(
+                    negative_pairwise_distances, offset), focal_decay_factor)
 
         # convert distance into probability
-        negative_pairwise_prob = tf.sigmoid(negative_pairwise_distance_transformed)
+        negative_pairwise_prob = 2. * tf.sigmoid(negative_pairwise_distance_transformed)
 
         # negative pair loss
         negative_pair_loss = negative_pairwise_prob * tf.square(negative_pairwise_distances) *\
                 tf.subtract(1., pairwise_similarity_labels)
 
-
-
         negative_pair_loss = tf.reduce_mean(negative_pair_loss, name='negative_pair_loss')
-
         loss = tf.add(positive_pair_loss, negative_pair_loss, name='loss')
 
-        return loss
+        return loss, positive_pair_loss, negative_pair_loss, pairwise_similarity_labels
 
-
-    def evaluate(self, sess):
+    def evaluate(self, sess, test_mode=1):
 
         def get_feature_and_label(init_op, sess, feature_tensor, label_tensor):
             feature_set = []
@@ -633,16 +712,25 @@ class FocalLoss:
 
             return feature_set, label_set
 
-        train_feature_set, train_label_set = \
+        if test_mode == 1:
+            train_feature_set, train_label_set = \
                 get_feature_and_label(self.train_init_op, sess, self.features, self.labels)
 
 
-        test_feature_set, test_label_set = \
+            test_feature_set, test_label_set = \
                 get_feature_and_label(self.test_init_op, sess, self.features, self.labels)
 
 
-        distM = distance.cdist(test_feature_set, train_feature_set)
-        nn_av, ft_av, st_av, dcg_av, e_av, map_, p_points, pre, rec, rankArray = RetrievalEvaluation.RetrievalEvaluation(distM, train_label_set, test_label_set, testMode=1)
+            distM = distance.cdist(test_feature_set, train_feature_set)
+            nn_av, ft_av, st_av, dcg_av, e_av, map_, p_points, pre, rec, rankArray = RetrievalEvaluation.RetrievalEvaluation(distM, train_label_set, test_label_set, testMode=1)
+        elif test_mode == 2:
+
+            test_feature_set, test_label_set = \
+                get_feature_and_label(self.test_init_op, sess, self.features, self.labels)
+            distM = distance.cdist(test_feature_set, test_feature_set)
+            nn_av, ft_av, st_av, dcg_av, e_av, map_, p_points, pre, rec, rankArray = RetrievalEvaluation.RetrievalEvaluation(distM, test_label_set, test_label_set, testMode=2)
+
+
 
         print(('The NN is {:5.5f}\nThe FT is {:5.5f}\n' +
               'The ST is {:5.5f}\nThe DCG is {:5.5f}\n' +
