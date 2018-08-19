@@ -2,6 +2,10 @@ import numpy as np
 
 def RetrievalEvaluation(distM, model_label, depth_label, testMode=1):
     '''
+<<<<<<< HEAD
+=======
+    C_depth: retrieval number for the testing example, Nx1
+>>>>>>> b61d37384c942b774cfe89c9a1542978155fa9ef
     distM: distance matrix, row for testing example, column for training example
     model_label: model_label for training example
     depth_label: label for testing example
@@ -11,6 +15,7 @@ def RetrievalEvaluation(distM, model_label, depth_label, testMode=1):
         2) use test as query, find relevant examples in the testing data
     '''
 
+<<<<<<< HEAD
     # calculate C_depth
     C_depth = np.zeros(depth_label.shape).astype(np.int)
     unique_labels = np.unique(model_label)
@@ -33,6 +38,29 @@ def RetrievalEvaluation(distM, model_label, depth_label, testMode=1):
 
 	rankArray = np.zeros((distM.shape[0], distM.shape[1]-1))
 
+=======
+
+    def get_C_depth(train_label, test_label):
+        C_depth = np.zeros(test_label.shape)
+        unique_labels = np.unique(test_label)
+        for i in range(unique_labels.shape[0]):             ### find the numbers
+            tmp_index_test = np.where(test_label == unique_labels[i])[0] ## for sketch index
+            tmp_index_train = np.where(train_label == unique_labels[i])[0]      ## for shape index
+            C_depth[tmp_index_test] = tmp_index_train.shape[0]
+        return C_depth.astype(np.int)
+
+    C_depth = get_C_depth(model_label, depth_label)
+    if testMode == 1:
+        C = C_depth
+        recall = np.zeros((distM.shape[0], distM.shape[1]))
+        precision = np.zeros((distM.shape[0], distM.shape[1]))
+        rankArray = np.zeros((distM.shape[0], distM.shape[1]))
+    elif testMode == 2:
+        C = C_depth - 1
+        recall = np.zeros((distM.shape[0], distM.shape[1]-1))
+        precision = np.zeros((distM.shape[0], distM.shape[1]-1))
+        rankArray = np.zeros((distM.shape[0], distM.shape[1]-1))
+>>>>>>> b61d37384c942b774cfe89c9a1542978155fa9ef
 
     nb_of_query = C.shape[0]
     p_points = np.zeros((nb_of_query, np.amax(C)))
@@ -46,25 +74,45 @@ def RetrievalEvaluation(distM, model_label, depth_label, testMode=1):
 
     for qqq in range(nb_of_query):
         temp_dist = distM[qqq]
+<<<<<<< HEAD
 	s = list(temp_dist)
 	R = sorted(range(len(s)), key=lambda k: s[k])
         if testMode == 1:
             model_label_l = model_label[R]
             numRetrieval = distM.shape[1]
 	    G = np.zeros(numRetrieval)
+=======
+        s = list(temp_dist)
+        R = sorted(range(len(s)), key=lambda k: s[k])
+        if testMode == 1:
+            model_label_l = model_label[R]
+            numRetrieval = distM.shape[1]
+            G = np.zeros(numRetrieval)
+>>>>>>> b61d37384c942b774cfe89c9a1542978155fa9ef
             rankArray[qqq] = R
         elif testMode == 2:
             model_label_l = model_label[R[1:]]
             numRetrieval = distM.shape[1] - 1
+<<<<<<< HEAD
 	    G = np.zeros(numRetrieval)
+=======
+            G = np.zeros(numRetrieval)
+>>>>>>> b61d37384c942b774cfe89c9a1542978155fa9ef
             rankArray[qqq] = R[1:]
 
         for i in range(numRetrieval):
             if model_label_l[i] == depth_label[qqq]:
                 G[i] = 1
+<<<<<<< HEAD
         G_sum = np.cumsum(G)
         r1 = G_sum / float(C[qqq])
 	p1 = G_sum / np.arange(1, numRetrieval+1)
+=======
+
+        G_sum = np.cumsum(G)
+        r1 = G_sum / float(C[qqq])
+        p1 = G_sum / np.arange(1, numRetrieval+1)
+>>>>>>> b61d37384c942b774cfe89c9a1542978155fa9ef
        	r_points = np.zeros(C[qqq])
         for i in range(C[qqq]):
             temp = np.where(G_sum == i+1)
@@ -72,6 +120,7 @@ def RetrievalEvaluation(distM, model_label, depth_label, testMode=1):
         r_points_int = np.array(r_points, dtype=int)
 
         p_points[qqq][:int(C[qqq])] = G_sum[r_points_int-1] / r_points
+<<<<<<< HEAD
        	ap[qqq] = np.mean(p_points[qqq][:int(C[qqq])])
        	nn[qqq] = G[0]
         ft[qqq] = G_sum[C[qqq]-1] / C[qqq]
@@ -82,6 +131,19 @@ def RetrievalEvaluation(distM, model_label, depth_label, testMode=1):
             e_measure[qqq] = 0
 	else:
        	    e_measure[qqq] = 2* p_32 * r_32/(p_32+r_32)
+=======
+        ap[qqq] = np.mean(p_points[qqq][:int(C[qqq])])
+        nn[qqq] = G[0]
+        ft[qqq] = G_sum[C[qqq]-1] / C[qqq]
+        st[qqq] = G_sum[min(2*C[qqq]-1, G_sum.size-1)] / C[qqq]
+        p_32 = G_sum[min(31, G_sum.size-1)] / min(32, G_sum.size)
+        r_32 = G_sum[min(31, G_sum.size-1)] / C[qqq]
+        if p_32 == 0 and r_32 == 0:
+            e_measure[qqq] = 0
+        else:
+
+            e_measure[qqq] = 2* p_32 * r_32/(p_32+r_32)
+>>>>>>> b61d37384c942b774cfe89c9a1542978155fa9ef
 
         if testMode == 1:
             NORM_VALUE = 1 + np.sum(1/np.log2(np.arange(2,C[qqq]+1)))
