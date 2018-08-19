@@ -25,6 +25,8 @@ from __future__ import print_function
 import os
 import tensorflow as tf
 import cv2
+import random
+
 slim = tf.contrib.slim
 
 
@@ -81,7 +83,7 @@ def create_dataset(train_img_list, train_label_list, \
 
   return images, labels, train_init_op, test_init_op
 
-def generate_list(root_dir, image_txt, train_test_split_txt, label_txt):
+def generate_list(root_dir, image_txt, train_test_split_txt, label_txt, offset=1):
     """
     Args:
         root_dir: the root directory for image data.
@@ -89,6 +91,7 @@ def generate_list(root_dir, image_txt, train_test_split_txt, label_txt):
         train_test_split_txt: a txt file listing the image set (training, or testing),
                                 denoting whether the image is for training or testing.
         label_txt:  a txt file list all the image label.
+        offset:     the started value of label.
 
     Returns:
         train_img_list: [train_img_path1, train_img_path2, ...]
@@ -125,10 +128,10 @@ def generate_list(root_dir, image_txt, train_test_split_txt, label_txt):
         # put all the data into list
         if set_label[-1] == '1': # train set label is 1
             train_img_list.append(os.path.join(root_dir, img_path[-1]))
-            train_label_list.append(int(label[-1]))
+            train_label_list.append(int(label[-1]) - offset)
         elif set_label[-1] == '0': # testing set label is 0
             test_img_list.append(os.path.join(root_dir, img_path[-1]))
-            test_label_list.append(int(label[-1]))
+            test_label_list.append(int(label[-1]) - offset)
 
         else:
             print("The set is unclear")
@@ -136,7 +139,88 @@ def generate_list(root_dir, image_txt, train_test_split_txt, label_txt):
             continue
 
 
+    # shuffle the training list
+    merged_list = list(zip(train_img_list, train_label_list))
+    random.shuffle(merged_list)
+    train_img_list, train_label_list = zip(*merged_list)
+    # convert tuple to list
+    train_img_list, train_label_list = \
+            list(train_img_list), list(train_label_list)
+
     return train_img_list, train_label_list, test_img_list, test_label_list
+
+def generate_half_split_list(root_dir, image_txt, train_test_split_txt, label_txt, offset=1):
+    """
+    Args:
+        root_dir: the root directory for image data.
+        image_txt: a txt file listing all the image paths.
+        train_test_split_txt: a txt file listing the image set (training, or testing),
+                                denoting whether the image is for training or testing.
+        label_txt:  a txt file list all the image label.
+        offset:     the started value of label.
+
+    Returns:
+        train_img_list: [train_img_path1, train_img_path2, ...]
+        train_label_list: [train_label1, train_label2, ....]
+        test_img_list: [test_img_path1, test_img_path2, ...]
+        test_label_list: [test_label1, test_label2, ...]
+    """
+
+    # check the file existence.
+    # all(): logic and across all the elements in a list
+    if not (os.path.isdir(root_dir) and all(map(os.path.isfile, \
+            [image_txt, train_test_split_txt, label_txt]))):
+        raise IOError("Please check the files or paths existence")
+
+    train_img_list = []
+    train_label_list =  []      # the label starts from 1
+    test_img_list = []
+    test_label_list = []        # the label starts from 1
+
+    # read all the file
+    # fl_txt is a list for file pointers
+    # with map(open, [image_txt, train_test_split_txt, label_txt]) as fl_txt:
+    fl_txt = map(open, [image_txt, train_test_split_txt, label_txt])
+    # read each file accordingly
+    for img_path, set_label, label in zip(*fl_txt):
+        # check if the image id is match, if not, continue
+        img_path = img_path.rstrip('\n').split(' ')
+        set_label = set_label.rstrip('\n').split(' ')
+        label = label.rstrip('\n').split(' ')
+        if not (img_path[0] == set_label[0] == label[0]):
+            print(img_path, set_label, label)
+            continue
+
+        # put all the data into list
+        if int(label[-1]) <= 100: # train set with the first half classes
+            train_img_list.append(os.path.join(root_dir, img_path[-1]))
+            train_label_list.append(int(label[-1]) - offset)
+        elif int(label[-1]) <= 200: # testing set using the second half classes
+            test_img_list.append(os.path.join(root_dir, img_path[-1]))
+            test_label_list.append(int(label[-1]) - offset - 100)
+
+        else:
+            print("The set is unclear")
+            print(img_path, set_label, label)
+            continue
+
+
+    # shuffle the training list
+    merged_list = list(zip(train_img_list, train_label_list))
+    random.shuffle(merged_list)
+    train_img_list, train_label_list = zip(*merged_list)
+    # convert tuple to list
+    train_img_list, train_label_list = \
+            list(train_img_list), list(train_label_list)
+
+
+
+
+    print("training image number is {}".format(len(train_img_list)))
+    print("testing image number is {}".format(len(test_img_list)))
+    return train_img_list, train_label_list, test_img_list, test_label_list
+
+
 
 
 
