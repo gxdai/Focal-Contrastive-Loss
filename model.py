@@ -54,6 +54,7 @@ class FocalLoss:
             ckpt_dir='checkpoint',
             model_name='model',
             loss_type='contrastive_loss',
+            with_regularizer=False,
             exclude=['global_step',
                     'InceptionV3/AuxLogits/Conv2d_2b_1x1/weights',
                     'InceptionV3/AuxLogits/Conv2d_2b_1x1/biases',
@@ -93,6 +94,9 @@ class FocalLoss:
         self.pretrained_model_path = pretrained_model_path
         self.exclude = exclude
         self.model_name = model_name
+        # whether to add the regulazier for parameters
+        self.with_regularizer = with_regularizer
+
         self.loss_type = loss_type
         self.focal_decay_factor = focal_decay_factor
 
@@ -124,6 +128,8 @@ class FocalLoss:
         print("learning_rate_decay_type = {:20}".format(self.learning_rate_decay_type))
         print("loss_type = {:20}".format(self.loss_type))
         print("margin = {:20}".format(self.margin))
+        print("with_regularizer = {:20}".format(self.with_regularizer))
+
 
 
 
@@ -172,6 +178,16 @@ class FocalLoss:
                                                   focal_decay_factor=self.focal_decay_factor,
                                                   offset=offset)
             self.loss_sum = tf.summary.scalar('loss', self.loss)
+
+
+
+
+        if self.with_regularizer:
+            # add regularization loss for parameters
+            self.regularization_loss = tf.add_n(slim.losses.get_regularization_losses())
+            self.total_loss = self.loss + self.regularization_loss
+        else:
+            self.total_loss = self.loss
 
         print("\t\t******************************")
 
@@ -305,10 +321,10 @@ class FocalLoss:
             batch_idx = 0
             while True:
                 try:
-                    _, loss_value, loss_p, loss_n, loss_sum_, debug_label, label, label_ \
+                    _, loss_value, loss_p, loss_n, loss_sum_, debug_label, label, label_, features \
                             = sess.run([train_op, self.loss, self.positive_pair_loss,
                                         self.negative_pair_loss, self.loss_sum,
-                                        self.debug_label, self.labels, self.labels_],
+                                        self.debug_label, self.labels, self.labels_, self.features],
                                         feed_dict={self.is_training: True})
                     batch_idx += 1
                     if batch_idx % 5 == 0:
@@ -320,6 +336,13 @@ class FocalLoss:
                     if math.isnan(loss_value):
                         print("The loss is nan")
                         break
+
+                    # print some values for debug
+                    if loss_value >= 10:
+                        print(label)
+                        print(label_)
+                        print(debug_label)
+                        print(np.sum(np.square(features), axis=1))
 
                 except tf.errors.OutOfRangeError:
                     break

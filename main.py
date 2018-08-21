@@ -29,6 +29,7 @@ parser.add_argument('--label_txt', type=str, \
 parser.add_argument('--pretrained_model_path', default='./weights/inception_v3.ckpt', type=str)
 
 parser.add_argument('--mode', default='train', type=str)
+parser.add_argument('--with_regularizer', default=False, type=bool)
 parser.add_argument('--optimizer', default='rmsprop', type=str)
 parser.add_argument('--loss_type', default='contrastive_loss', type=str)
 parser.add_argument('--learning_rate_decay_type', default='fixed', type=str)

@@ -9,7 +9,7 @@ CUDA_VISIBLE_DEVICES=$GPU_ID py_gxdai main.py \
                         --mode $MODE \
                         --optimizer momentum \
                         --batch_size 64 \
-                        --learning_rate 0.001 \
+                        --learning_rate 0.0001 \
                         --learning_rate_decay_type fixed \
                         --loss_type contrastive_loss \
                         --margin 5.
