@@ -45,12 +45,12 @@ def RetrievalEvaluation(distM, model_label, depth_label, testMode=1):
 
     for qqq in range(nb_of_query):
         temp_dist = distM[qqq]
-	s = list(temp_dist)
-	R = sorted(range(len(s)), key=lambda k: s[k])
+        s = list(temp_dist)
+        R = sorted(range(len(s)), key=lambda k: s[k])
         if testMode == 1:
             model_label_l = model_label[R]
             numRetrieval = distM.shape[1]
-	    G = np.zeros(numRetrieval)
+            G = np.zeros(numRetrieval)
             rankArray[qqq] = R
         elif testMode == 2:
             model_label_l = model_label[R[1:]]

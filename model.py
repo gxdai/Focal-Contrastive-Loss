@@ -98,7 +98,8 @@ class FocalLoss:
 
         self.ckpt_dir = os.path.join(ckpt_dir, self.network_type,
                                     self.pair_type, self.loss_type)
-	self.root_dir = root_dir
+
+        self.root_dir = root_dir
         self.image_txt = image_txt
         self.train_test_split_txt = train_test_split_txt
         self.label_txt = label_txt
@@ -106,7 +107,7 @@ class FocalLoss:
         # create directory
         self.check_and_create_path(self.ckpt_dir)
 
-	self.is_training = tf.placeholder(tf.bool)
+        self.is_training = tf.placeholder(tf.bool)
 
         self.root_dir = root_dir
         self.image_txt = image_txt
@@ -465,12 +466,12 @@ class FocalLoss:
         nn_av, ft_av, st_av, dcg_av, e_av, map_, p_points, pre, rec, rankArray = \
                 RetrievalEvaluation.RetrievalEvaluation(dist_matrix, train_label_set, test_label_set, testMode=1)
 
-        print 'The NN is %5f' % (nn_av)
-        print 'The FT is %5f' % (ft_av)
-        print 'The ST is %5f' % (st_av)
-        print 'The DCG is %5f' % (dcg_av)
-        print 'The E is %5f' % (e_av)
-        print 'The MAP is %5f' % (map_)
+        print ('The NN is %5f' % (nn_av))
+        print ('The FT is %5f' % (ft_av))
+        print ('The ST is %5f' % (st_av))
+        print ('The DCG is %5f' % (dcg_av))
+        print ('The E is %5f' % (e_av))
+        print ('The MAP is %5f' % (map_))
 
 
     def create_iterator(self):
