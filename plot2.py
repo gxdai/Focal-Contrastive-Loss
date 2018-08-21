@@ -37,13 +37,13 @@ weighted_dist_2 =  weight_2 * np.square(dist)
 
 
 # plot results
-ax.plot(dist, origin_dist, linewidth=2.0, label="$EL$")
-ax.plot(dist, weighted_dist, linewidth=2.0, label='$FEL$ $(\sigma=0.1)$')
-ax.plot(dist, weighted_dist_2, linewidth=2.0, label='$FEL$ $(\sigma=0.2)$')
+ax.plot(dist, origin_dist, linewidth=2.0, label="$J_{el}$")
+ax.plot(dist, weighted_dist, linewidth=2.0, label='$J_{fel}$ $(\sigma=0.1)$')
+ax.plot(dist, weighted_dist_2, linewidth=2.0, label='$J_{fel}$ $(\sigma=0.2)$')
 # plot split point
 ax.plot([0.5]*9, np.arange(0, 0.25, 0.03), 'k--', linewidth=1.5)
-ax.text(0.1, 1.5, "$EL=d^2$", fontsize=16)
-ax.text(0.1, 1.3, r'$FEL=2*f(\frac{d-h/2}{\sigma})d^2$', fontsize=16)
+ax.text(0.1, 1.5, "$J_{el}=d^2$", fontsize=16)
+ax.text(0.1, 1.3, r'$J_{fel}=2*f(\frac{d-h/2}{\sigma})d^2$', fontsize=16)
 ax.text(0.5, 0.02, r'$h/2$', fontsize=12)
 ax.text(1., 0.02, r'$h$', fontsize=12)
 ax.legend(loc='upper left')
@@ -61,9 +61,9 @@ weighted_dist_negative_2 = weight_func(dist_negative, offset, sigma_2) * origin_
 
 
 # plot results
-ax.plot(dist, origin_dist_negative, linewidth=2.0, label='$HL$')
-ax.plot(dist, weighted_dist_negative, linewidth=2.0, label='$FHL$ $(\sigma=0.1)$')
-ax.plot(dist, weighted_dist_negative_2, linewidth=2.0, label='$FHL$ $(\sigma=0.2)$')
+ax.plot(dist, origin_dist_negative, linewidth=2.0, label='$J_{hl}$')
+ax.plot(dist, weighted_dist_negative, linewidth=2.0, label='$J_{fhl}$ $(\sigma=0.1)$')
+ax.plot(dist, weighted_dist_negative_2, linewidth=2.0, label='$J_{fhl}$ $(\sigma=0.2)$')
 
 
 ax.plot([0.5]*9, np.arange(0, 0.25, 0.03), 'k--', linewidth=1.5)
@@ -71,8 +71,8 @@ ax.text(0.5, 0.02, r'$h/2$', fontsize=12)
 ax.text(1., 0.02, r'$h$', fontsize=12)
 
 
-ax.text(0.7, 1.3, r'$HL=\max\{0, h-d \}^2$', fontsize=16)
-ax.text(0.7, 1.1, r'$FHL=2*f(\frac{HL^{0.5}-h/2}{\sigma})*HL$', fontsize=16)
+ax.text(0.7, 1.3, r'$J_{hl}=\max\{0, h-d \}^2$', fontsize=16)
+ax.text(0.7, 1.1, r'$J_{fhl}=2*f(\frac{J_{hl}^{0.5}-h/2}{\sigma})*HL$', fontsize=16)
 ax.legend(loc='upper right')
 
 ax.set_xlabel("Pairwise distance $d$")
