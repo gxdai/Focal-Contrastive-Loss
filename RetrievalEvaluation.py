@@ -19,9 +19,11 @@ def RetrievalEvaluation(distM, model_label, depth_label, testMode=1):
             tmp_index_test = np.where(test_label == unique_labels[i])[0] ## for sketch index
             tmp_index_train = np.where(train_label == unique_labels[i])[0]      ## for shape index
             C_depth[tmp_index_test] = tmp_index_train.shape[0]
-        return C_depth.astype(np.int)
+        return C_depth.astype(int)
 
     C_depth = get_C_depth(model_label, depth_label)
+    C_depth = C_depth.astype(int)
+
     if testMode == 1:
         C = C_depth
         recall = np.zeros((distM.shape[0], distM.shape[1]))
