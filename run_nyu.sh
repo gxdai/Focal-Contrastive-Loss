@@ -11,19 +11,27 @@ LEARNING_RATE=0.0001
 
 GPU_ID=$1
 MODE=$2
+LOSS_TYPE=$3
+
 CUDA_VISIBLE_DEVICES=$GPU_ID python main.py \
                         --mode $MODE \
-                        --optimizer momentum \
+                        --optimizer "momentum" \
                         --batch_size 32 \
                         --learning_rate $LEARNING_RATE \
-                        --learning_rate_decay_type fixed \
-                        --loss_type contrastive_loss \
-                        --margin 1. \
+                        --learning_rate_decay_type "fixed" \
+                        --loss_type $LOSS_TYPE \
+                        --margin "1.0" \
                         --root_dir $ROOT_DIR \
                         --image_txt $IMAGE_TXT \
                         --train_test_split_txt $TRAIN_TEST_SPLIT_TXT \
                         --label_txt $LABEL_TXT \
-                        --with_regularizer False 
+                        --focal_decay_factor "10.0" \
+                        --display_step 1
+                        #--with_regularizer
+
+
+
+
 
 if [ 0 -eq 1 ]; then
 	--num_epochs1 200 \

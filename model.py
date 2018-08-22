@@ -19,6 +19,7 @@ import numpy as np
 from scipy.spatial import distance
 import cub_2011
 import RetrievalEvaluation
+import evaluate_recall
 
 
 
@@ -55,6 +56,7 @@ class FocalLoss:
             model_name='model',
             loss_type='contrastive_loss',
             with_regularizer=False,
+            display_step=5,
             exclude=['global_step',
                     'InceptionV3/AuxLogits/Conv2d_2b_1x1/weights',
                     'InceptionV3/AuxLogits/Conv2d_2b_1x1/biases',
@@ -96,13 +98,17 @@ class FocalLoss:
         self.model_name = model_name
         # whether to add the regulazier for parameters
         self.with_regularizer = with_regularizer
+        self.display_step = display_step
 
         self.loss_type = loss_type
         self.focal_decay_factor = focal_decay_factor
 
-        self.ckpt_dir = os.path.join(ckpt_dir, self.network_type,
+        if self.loss_type == 'contrastive_loss':
+            self.ckpt_dir = os.path.join(ckpt_dir, self.network_type,
                                     self.pair_type, self.loss_type)
-
+        elif self.loss_type  == 'focal_contrastive_loss':
+            self.ckpt_dir = os.path.join(ckpt_dir, self.network_type,
+                                    self.pair_type, self.loss_type, str(int(self.focal_decay_factor)))
         self.root_dir = root_dir
         self.image_txt = image_txt
         self.train_test_split_txt = train_test_split_txt
@@ -113,12 +119,7 @@ class FocalLoss:
 
         self.is_training = tf.placeholder(tf.bool)
 
-        self.root_dir = root_dir
-        self.image_txt = image_txt
-        self.train_test_split_txt = train_test_split_txt
-        self.label_txt = label_txt
-
-        self.is_training = tf.placeholder(tf.bool)
+        self.k_set = [1, 2, 4, 8]
         # create iterators
 
         print("Configuration information")
@@ -129,9 +130,7 @@ class FocalLoss:
         print("loss_type = {:20}".format(self.loss_type))
         print("margin = {:20}".format(self.margin))
         print("with_regularizer = {:20}".format(self.with_regularizer))
-
-
-
+        print("focal_decay_factor = {:20}".format(self.focal_decay_factor))
 
         self.create_iterator()
         self.build_network()
@@ -149,6 +148,17 @@ class FocalLoss:
 
         self.features_, _ = self.inception_net(inputs=self.images_, embedding_size=self.embedding_size, \
                                                 is_training=self.is_training, reuse=True)
+
+
+
+        self.variables_to_train = []
+        self.var_list = tf.trainable_variables()
+        for var in self.var_list:
+            if "embedding" in var.name or "Logits" in var.name:
+                self.variables_to_train.append(var)
+
+
+
 
         variables_to_restore = tf.contrib.framework.get_variables_to_restore(exclude=self.exclude)
 
@@ -306,7 +316,25 @@ class FocalLoss:
         """
         learning_rate = self.configure_learning_rate()
         optimizer = self.configure_optimizer(learning_rate)
-        train_op = optimizer.minimize(self.loss)
+
+
+
+        # computer gradients manually
+        grads_and_vars = optimizer.compute_gradients(self.loss, self.var_list)
+
+        # Use 10 times learning rate for last two layers
+        scale_factor = 10.
+        for idx, (grad, var) in enumerate(grads_and_vars):
+            if "InceptionV3/embedding" in var.name or "InceptionV3/Logits" in var.name:
+                print("***\t"+var.name+"\t******")
+                grads_and_vars[idx] = (grad*scale_factor, var)
+
+
+        train_op_ = optimizer.apply_gradients(grads_and_vars)
+
+
+        train_op_with_last_two_layers = optimizer.minimize(loss=self.loss, var_list=self.variables_to_train)
+        train_op_with_all_layers = optimizer.minimize(loss=self.loss, var_list=self.var_list)
         sess.run(tf.global_variables_initializer())
         self.init_fn(sess)
         batch_num = int(self.train_img_num / self.batch_size)
@@ -321,13 +349,22 @@ class FocalLoss:
             batch_idx = 0
             while True:
                 try:
+                    # for debug
+                    """
                     _, loss_value, loss_p, loss_n, loss_sum_, debug_label, label, label_, features \
                             = sess.run([train_op, self.loss, self.positive_pair_loss,
                                         self.negative_pair_loss, self.loss_sum,
                                         self.debug_label, self.labels, self.labels_, self.features],
                                         feed_dict={self.is_training: True})
+                    """
+
+                    # = sess.run([train_op_with_last_two_layers if epoch < 3 else train_op_with_last_two_layers,
+                    _, loss_value, loss_p, loss_n, loss_sum_ \
+                            = sess.run([train_op_with_all_layers,
+                                       self.loss, self.positive_pair_loss, self.negative_pair_loss, self.loss_sum],
+                                        feed_dict={self.is_training: True})
                     batch_idx += 1
-                    if batch_idx % 5 == 0:
+                    if batch_idx % self.display_step == 0:
                         print(("{}: Epoch [{:3d}/{:3d}] [{:3d}/{:3d}], Loss: {:6.5f}, " +
                             "Loss positive pair: {:6.5f}, Loss negative pair: {:6.5f}").format(
                             str(datetime.datetime.now()), epoch, self.num_epochs,
@@ -336,13 +373,6 @@ class FocalLoss:
                     if math.isnan(loss_value):
                         print("The loss is nan")
                         break
-
-                    # print some values for debug
-                    if loss_value >= 10:
-                        print(label)
-                        print(label_)
-                        print(debug_label)
-                        print(np.sum(np.square(features), axis=1))
 
                 except tf.errors.OutOfRangeError:
                     break
@@ -400,6 +430,11 @@ class FocalLoss:
             distM = distance.cdist(test_feature_set, test_feature_set)
             nn_av, ft_av, st_av, dcg_av, e_av, map_, p_points, pre, rec, rankArray = RetrievalEvaluation.RetrievalEvaluation(distM, test_label_set, test_label_set, testMode=2)
 
+            recall_k = evaluate_recall.evaluate_recall(test_feature_set, test_label_set, self.k_set)
+
+            for i, k in enumerate(self.k_set):
+                print("Recall@{:1d}: {:6.5f}".format(self.k_set[i], recall_k[i]))
+
 
 
         print(('The NN is {:5.5f}\nThe FT is {:5.5f}\n' +
@@ -409,7 +444,118 @@ class FocalLoss:
 
 
 
-    def evaluate(self, sess):
+
+
+    def evaluate(self, sess, test_mode=2):
+        ckpt = self.get_checkpoint_file()
+        sess.run(tf.global_variables_initializer())
+        if ckpt is None:
+            raise IOError("No check point file found")
+        else:
+            self.saver.restore(sess, ckpt.model_checkpoint_path)
+
+        def get_feature_and_label(init_op, sess, feature_tensor, label_tensor):
+            feature_set = []
+            label_set = []
+            counter = 0
+            sess.run(init_op)
+            while True:
+                try:
+                    features, labels = sess.run([self.features, self.labels], feed_dict={self.is_training: False})
+                    counter += 1
+                    print("Processing the {:3d}-th batch".format(counter))
+                except tf.errors.OutOfRangeError:
+                    break
+
+                feature_set.append(features)
+                label_set.append(labels)
+
+            feature_set = np.concatenate(feature_set, axis=0)
+            label_set = np.concatenate(label_set, axis=0)
+
+            return feature_set, label_set
+
+
+        if test_mode == 1:
+            train_feature_set, train_label_set = \
+                get_feature_and_label(self.train_init_op, sess, self.features, self.labels)
+
+
+            test_feature_set, test_label_set = \
+                get_feature_and_label(self.test_init_op, sess, self.features, self.labels)
+
+
+            distM = distance.cdist(test_feature_set, train_feature_set)
+            nn_av, ft_av, st_av, dcg_av, e_av, map_, p_points, pre, rec, rankArray = RetrievalEvaluation.RetrievalEvaluation(distM, train_label_set, test_label_set, testMode=1)
+
+        elif test_mode == 2:
+
+            test_feature_set, test_label_set = \
+                get_feature_and_label(self.test_init_op, sess, self.features, self.labels)
+            distM = distance.cdist(test_feature_set, test_feature_set)
+            nn_av, ft_av, st_av, dcg_av, e_av, map_, p_points, pre, rec, rankArray = RetrievalEvaluation.RetrievalEvaluation(distM, test_label_set, test_label_set, testMode=2)
+
+            recall_k = evaluate_recall.evaluate_recall(test_feature_set, test_label_set, self.k_set)
+
+            for i, k in enumerate(self.k_set):
+                print("Recall@{:1d}: {:6.5f}".format(self.k_set[i], recall_k[i]))
+
+
+
+        print(('The NN is {:5.5f}\nThe FT is {:5.5f}\n' +
+              'The ST is {:5.5f}\nThe DCG is {:5.5f}\n' +
+              'The E is {:5.5f}\nThe MAP {:5.5f}\n').format(
+                  nn_av, ft_av, st_av, dcg_av, e_av, map_))
+
+
+
+    def evaluate_online_backup(self, sess, test_mode=1):
+
+        def get_feature_and_label(init_op, sess, feature_tensor, label_tensor):
+            feature_set = []
+            label_set = []
+            counter = 0
+            sess.run(init_op)
+            while True:
+                try:
+                    features, labels = sess.run([self.features, self.labels], feed_dict={self.is_training: False})
+                    counter += 1
+                    print("Processing the {:3d}-th batch".format(counter))
+                except tf.errors.OutOfRangeError:
+                    break
+
+                feature_set.append(features)
+                label_set.append(labels)
+
+            feature_set = np.concatenate(feature_set, axis=0)
+            label_set = np.concatenate(label_set, axis=0)
+
+            return feature_set, label_set
+
+
+        if test_mode == 1:
+            train_feature_set, train_label_set = \
+                get_feature_and_label(self.train_init_op, sess, self.features, self.labels)
+
+
+            test_feature_set, test_label_set = \
+                get_feature_and_label(self.test_init_op, sess, self.features, self.labels)
+
+
+            distM = distance.cdist(test_feature_set, train_feature_set)
+            nn_av, ft_av, st_av, dcg_av, e_av, map_, p_points, pre, rec, rankArray = RetrievalEvaluation.RetrievalEvaluation(distM, train_label_set, test_label_set, testMode=1)
+
+        elif test_mode == 2:
+
+            test_feature_set, test_label_set = \
+                get_feature_and_label(self.test_init_op, sess, self.features, self.labels)
+            distM = distance.cdist(test_feature_set, test_feature_set)
+            nn_av, ft_av, st_av, dcg_av, e_av, map_, p_points, pre, rec, rankArray = RetrievalEvaluation.RetrievalEvaluation(distM, test_label_set, test_label_set, testMode=2)
+
+
+
+
+    def evaluate_backup(self, sess):
         """
         training process.
         """
@@ -712,55 +858,6 @@ class FocalLoss:
         loss = tf.add(positive_pair_loss, negative_pair_loss, name='loss')
 
         return loss, positive_pair_loss, negative_pair_loss, pairwise_similarity_labels
-
-    def evaluate(self, sess, test_mode=1):
-
-        def get_feature_and_label(init_op, sess, feature_tensor, label_tensor):
-            feature_set = []
-            label_set = []
-            counter = 0
-            sess.run(init_op)
-            while True:
-                try:
-                    features, labels = sess.run([feature_tensor, label_tensor], feed_dict={self.is_training: False})
-                    counter += 1
-                    print("Processing the {:3d}-th batch".format(counter))
-                except tf.errors.OutOfRangeError:
-                    break
-
-                feature_set.append(features)
-                label_set.append(labels)
-
-            feature_set = np.concatenate(feature_set, axis=0)
-            label_set = np.concatenate(label_set, axis=0)
-
-            return feature_set, label_set
-
-        if test_mode == 1:
-            train_feature_set, train_label_set = \
-                get_feature_and_label(self.train_init_op, sess, self.features, self.labels)
-
-
-            test_feature_set, test_label_set = \
-                get_feature_and_label(self.test_init_op, sess, self.features, self.labels)
-
-
-            distM = distance.cdist(test_feature_set, train_feature_set)
-            nn_av, ft_av, st_av, dcg_av, e_av, map_, p_points, pre, rec, rankArray = RetrievalEvaluation.RetrievalEvaluation(distM, train_label_set, test_label_set, testMode=1)
-        elif test_mode == 2:
-
-            test_feature_set, test_label_set = \
-                get_feature_and_label(self.test_init_op, sess, self.features, self.labels)
-            distM = distance.cdist(test_feature_set, test_feature_set)
-            nn_av, ft_av, st_av, dcg_av, e_av, map_, p_points, pre, rec, rankArray = RetrievalEvaluation.RetrievalEvaluation(distM, test_label_set, test_label_set, testMode=2)
-
-
-
-        print(('The NN is {:5.5f}\nThe FT is {:5.5f}\n' +
-              'The ST is {:5.5f}\nThe DCG is {:5.5f}\n' +
-              'The E is {:5.5f}\nThe MAP {:5.5f}\n').format(
-                  nn_av, ft_av, st_av, dcg_av, e_av, map_))
-
 
 
 if __name__ == '__main__':
