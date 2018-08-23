@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import argparse
 import os
 import sys
@@ -38,6 +40,7 @@ parser.add_argument('--num_workers', default=4, type=int)
 parser.add_argument('--num_epochs1', default=20, type=int)
 parser.add_argument('--num_epochs2', default=10, type=int)
 parser.add_argument('--learning_rate', default=1e-2, type=float)
+parser.add_argument('--momentum', default=1e-2, type=float)
 parser.add_argument('--learning_rate2', default=1e-4, type=float)
 parser.add_argument('--dropout_keep_prob', default=0.5, type=float)
 parser.add_argument('--weight_decay', default=5e-4, type=float)
@@ -53,6 +56,7 @@ parser.add_argument('--targetNum', default=1000, type=int)
 parser.add_argument('--margin', default=1.0, type=float)
 parser.add_argument('--focal_decay_factor', default=1.0, type=float)
 parser.add_argument('--display_step', default=5, type=int, help='step interval for displaying loss')
+parser.add_argument('--eval_step', default=5, type=int, help='step interval for evaluate loss')
 # image information
 parser.add_argument('--width', default=512, type=int)
 parser.add_argument('--height', default=512, type=int)
@@ -66,7 +70,7 @@ def main(args):
     # Get training data
 
     print(args)
-    print("focal_decay_factor = {}".format(args.focal_decay_factor))
+
     FocalLoss = model.FocalLoss(root_dir=args.root_dir, image_txt=args.image_txt,
 				train_test_split_txt=args.train_test_split_txt,
 				label_txt=args.label_txt, batch_size=args.batch_size,
@@ -75,7 +79,8 @@ def main(args):
                                 learning_rate_decay_type=args.learning_rate_decay_type,
                                 focal_decay_factor=args.focal_decay_factor,
                                 with_regularizer=args.with_regularizer,
-                                display_step=args.display_step)
+                                display_step=args.display_step, momentum=args.momentum,
+                                eval_step=args.eval_step)
 
     config=tf.ConfigProto()
     config.gpu_options.allow_growth = True
