@@ -2,3 +2,5 @@
 __pycache__/
 weights/
 *.pyc
+checkpoint/
+run.sh.backup
