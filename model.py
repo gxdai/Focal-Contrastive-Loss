@@ -297,8 +297,8 @@ class FocalLoss:
                                 # Final pooling and prediction
                 with tf.variable_scope('embedding'):
                     embedding_vector = slim.conv2d(inputs, embedding_size, [1, 1], activation_fn=None,
-                                                   normalizer_fn=None, scope='Conv2d_1c_1x1') #,
-                                                   # weights_initializer=tf.truncated_normal_initializer(stddev=.01))
+                                                   normalizer_fn=None, scope='Conv2d_1c_1x1')
+                                                   # weights_initializer=tf.truncated_normal_initializer(stddev=.005))
 
                 if spatial_squeeze:
                     embedding_vector = tf.squeeze(embedding_vector, [1, 2], name='SpatialSqueeze')

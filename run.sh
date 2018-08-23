@@ -41,7 +41,8 @@ CUDA_VISIBLE_DEVICES=$GPU_ID $PYTHON main.py \
                         --label_txt $LABEL_TXT \
                         --focal_decay_factor "1.0" \
                         --display_step 20 \
-                        --eval_step 20
+                        --eval_step 20 \
+                        --embedding_size 128
                         #--with_regularizer
 
 

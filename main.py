@@ -61,6 +61,7 @@ parser.add_argument('--eval_step', default=5, type=int, help='step interval for 
 parser.add_argument('--width', default=512, type=int)
 parser.add_argument('--height', default=512, type=int)
 
+parser.add_argument('--embedding_size', default=128, type=int)
 
 args = parser.parse_args()
 
@@ -80,7 +81,7 @@ def main(args):
                                 focal_decay_factor=args.focal_decay_factor,
                                 with_regularizer=args.with_regularizer,
                                 display_step=args.display_step, momentum=args.momentum,
-                                eval_step=args.eval_step)
+                                eval_step=args.eval_step, embedding_size=args.embedding_size)
 
     config=tf.ConfigProto()
     config.gpu_options.allow_growth = True
