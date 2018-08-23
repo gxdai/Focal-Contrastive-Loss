@@ -10,7 +10,7 @@ if [ $(hostname) = 'dgx1' ];  then
     LABEL_TXT="/data/Guoxian_Dai/CUB_200_2011/CUB_200_2011/image_class_labels.txt"
     LEARNING_RATE=0.0001
     PYTHON=py_gxdai
-elif [ $(hostname) = 'nyu' ]; then
+elif [ $(hostname) = 'aduae266-lap' ]; then
    # running code one nyu machine
 
     ROOT_DIR="/home/gxdai/MMVC_LARGE2/Guoxian_Dai/data/cub_2011/CUB_200_2011/images"
@@ -18,6 +18,7 @@ elif [ $(hostname) = 'nyu' ]; then
     TRAIN_TEST_SPLIT_TXT="/home/gxdai/MMVC_LARGE2/Guoxian_Dai/data/cub_2011/CUB_200_2011/train_test_split.txt"
     LABEL_TXT="/home/gxdai/MMVC_LARGE2/Guoxian_Dai/data/cub_2011/CUB_200_2011/image_class_labels.txt"
     LEARNING_RATE=0.0001
+    PYTHON=python
 fi
 
 
@@ -29,7 +30,7 @@ LOSS_TYPE=$3
 CUDA_VISIBLE_DEVICES=$GPU_ID $PYTHON main.py \
                         --mode $MODE \
                         --optimizer "momentum" \
-                        --batch_size 64 \
+                        --batch_size 32 \
                         --momentum 0.9 \
                         --learning_rate $LEARNING_RATE \
                         --learning_rate_decay_type "fixed" \
