@@ -3,6 +3,8 @@ This is the module evaluate the clustering performance.
 """
 
 from sklearn.cluster import KMeans
+import numpy as np
+from scipy.special import comb
 
 def get_cluster(feature_set, n_clusters=2):
     """"
@@ -30,9 +32,7 @@ def get_label_statics(label_set):
     return unique_labels, sample_num_per_class, class_num
 
 
-def compute_H():
 
-    pass
 
 
 def evaluate_clutering(feature_set, label_set, n_clusters=None):
@@ -43,7 +43,7 @@ def evaluate_clutering(feature_set, label_set, n_clusters=None):
     assert feature_set.shape[0] == label_set[0], \
             "the number of feature doesn't match the number of labels"
 
-    unique_labels, sample_num_per_label, class_num = \
+    unique_labels, sample_num_per_class, class_num = \
             get_label_statics(label_set)
 
 
@@ -75,8 +75,94 @@ def evaluate_clutering(feature_set, label_set, n_clusters=None):
     purity /= float(total_num)
     print("Purity is {:5.3f}".format(purity))
 
-    # compute entropy
+    # compute normalized mutual information
 
+    count_cross = np.zeros((n_clusters, class_num))
+    for i in range(n_clusters):
+        index_i = np.where(cluster_set == unique_labels[i])
+        labels_for_cluster_i = label_set[index_i]
+        for j in range(class_num):
+            index_j = np.where(labels_for_cluster_i == unique_labels[j])
+            count_cross[i, j] = index_j[0].shape[0]
+
+    # mutual information
+    I = 0
+    for i in range(n_clusters):
+        for j in range(class_num):
+            if count_cross[i,j] > 0:
+                s = count_cross[i,j] / total_num * np.log(total_num * count_cross[i,j] /
+                    (sample_num_per_cluster[i] * sample_num_per_class[j]))
+                I += s
+
+
+    print("Mutual information is {:5.5f}".format(I))
+
+    h_cluster = 0
+    for i in range(n_clusters):
+        s = -sample_num_per_cluster[i] / total_num * \
+            np.log(sample_num_per_cluster[i] / total_num)
+
+        h_cluster += s
+
+    print("Entropy cluster is {:5.5f}".format(h_cluster))
+
+
+    h_class = 0
+    for i in range(n_clusters):
+        s = -sample_num_per_cluster[i] / total_num * \
+            np.log(sample_num_per_cluster[i] / total_num)
+
+        h_class += s
+
+    print("Entropy cluster is {:5.5f}".format(I))
+    
+    normalized_mutual_information = 2 * I / (h_cluster + h_class)
+    print("normalized_mutual_information is {:5.5f}".\
+        format(normalized_mutual_information))
+
+    tp_and_fp = 0
+    for i in range(n_clusters):
+        if sample_num_per_cluster[i] > 1:
+            tp_and_fp += comb(sample_num_per_cluster[i], 2)
+
+
+    tp = 0
+    for i in range(n_clusters):
+        for j in range(class_num):
+            if count_cross[i,j] > 1:
+                tp += comb(count_cross[i,j], 2)
+
+    print("True positive is {}".format(tp))
+    
+    fp = tp_and_fp - tp
+
+    print("False positive is {}".format(fp))
+    
+    count = 0
+    for j in range(class_num):
+        if sample_num_per_class[j] > 1:
+            count += comb(sample_num_per_class, 2)
+
+
+    fn = count - tp
+    print("False negative is {}".format(fn))
+    
+    tn = comb(total_num, 2) - tp - fp -fn
+
+    RI = (tp + tn) / comb(total_num, 2)
+    print("RI is {}".format(RI))
+
+    precision = tp / (tp + fp)
+    recall = tp / (tp + tn)
+
+    print("Precision is {}".format(precision))
+    print("Recall is {}".format(recall))
+
+    beta = 1
+    F = (beta * beta + 1) * precision * recall / \
+        (beta * beta * precision + recall)
+
+    print("F_{} is {}".format(beta, F))
 
 
 
