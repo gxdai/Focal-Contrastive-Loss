@@ -64,7 +64,9 @@ class FocalLoss:
                     'InceptionV3/Logits/Conv2d_1c_1x1/weights',
                     'InceptionV3/Logits/Conv2d_1c_1x1/biases',
                     'InceptionV3/embedding/Conv2d_1c_1x1/biases',
-                    'InceptionV3/embedding/Conv2d_1c_1x1/weights'
+                    'InceptionV3/embedding/Conv2d_1c_1x1/weights',
+                    'InceptionV3/embedding/Conv2d_1d_1x1/biases',
+                    'InceptionV3/embedding/Conv2d_1d_1x1/weights'
                 ]):
         """
         initialize the class.
@@ -295,9 +297,13 @@ class FocalLoss:
             with slim.arg_scope([slim.batch_norm, slim.dropout],
                                 is_training=is_training):
                                 # Final pooling and prediction
+                tf.nn.relu
                 with tf.variable_scope('embedding'):
-                    embedding_vector = slim.conv2d(inputs, embedding_size, [1, 1], activation_fn=None,
+                    embedding_vector = slim.conv2d(inputs, 1000, [1, 1], activation_fn=tf.nn.relu,
                                                    normalizer_fn=None, scope='Conv2d_1c_1x1')
+
+                    embedding_vector = slim.conv2d(embedding_vector, embedding_size, [1, 1], activation_fn=None,
+                                                   normalizer_fn=None, scope='Conv2d_1d_1x1')
                                                    # weights_initializer=tf.truncated_normal_initializer(stddev=.005))
 
                 if spatial_squeeze:

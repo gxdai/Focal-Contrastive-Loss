@@ -15,7 +15,8 @@ def get_cluster(feature_set, n_clusters=2):
     Args:
         kmeams
     """
-    kmeans = KMeans(n_clusters=2, random_state=0).fit(feature_set)
+    print("In side function n_clusters = {}".format(n_clusters))
+    kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(feature_set)
 
     return kmeans
 
@@ -39,8 +40,8 @@ def evaluate_clutering(feature_set, label_set, n_clusters=None):
     """
     evalute the cluserting performance.
     """
-    total_num = label_set[0]
-    assert feature_set.shape[0] == label_set[0], \
+    total_num = label_set.shape[0]
+    assert feature_set.shape[0] == label_set.shape[0], \
             "the number of feature doesn't match the number of labels"
 
     unique_labels, sample_num_per_class, class_num = \
@@ -49,16 +50,19 @@ def evaluate_clutering(feature_set, label_set, n_clusters=None):
 
     if n_clusters is None:
         n_clusters = unique_labels.shape[0]
-
-    kmeans = get_cluster(feature_set, n_clusters)
+    
+    kmeans = get_cluster(feature_set=feature_set, n_clusters=n_clusters)
     cluster_set = kmeans.labels_
     # count number of samples for each cluster
     unique_clusters, sample_num_per_cluster, cluster_num_ = \
             get_label_statics(cluster_set)
-
+    
+    print(n_clusters)
+    print(cluster_num_)
     assert n_clusters == cluster_num_, "cluster number doesn't match"
 
     # count purity
+    purity = 0.
     for i in range(n_clusters):
         # get samples belong to i-the cluster
         index = np.where(cluster_set == unique_clusters[i])
@@ -141,7 +145,7 @@ def evaluate_clutering(feature_set, label_set, n_clusters=None):
     count = 0
     for j in range(class_num):
         if sample_num_per_class[j] > 1:
-            count += comb(sample_num_per_class, 2)
+            count += comb(sample_num_per_class[j], 2)
 
 
     fn = count - tp
@@ -155,6 +159,8 @@ def evaluate_clutering(feature_set, label_set, n_clusters=None):
     precision = tp / (tp + fp)
     recall = tp / (tp + tn)
 
+    print(tp, fp, tn, fn)
+
     print("Precision is {}".format(precision))
     print("Recall is {}".format(recall))
 
@@ -164,6 +170,14 @@ def evaluate_clutering(feature_set, label_set, n_clusters=None):
 
     print("F_{} is {}".format(beta, F))
 
+    return normalized_mutual_information, RI, F
+
+
+
+if __name__ == '__main__':
+    feature_set = np.random.random((1000, 100))
+    label_set = np.random.permutation(1000) % 10
+    NMI, RI, F = evaluate_clutering(feature_set, label_set)
 
 
 
