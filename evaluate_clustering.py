@@ -36,7 +36,7 @@ def get_label_statics(label_set):
 
 
 
-def evaluate_clutering(feature_set, label_set, n_clusters=None):
+def evaluate_clustering(feature_set, label_set, n_clusters=None):
     """
     evalute the cluserting performance.
     """
@@ -49,18 +49,20 @@ def evaluate_clutering(feature_set, label_set, n_clusters=None):
 
 
     if n_clusters is None:
-        n_clusters = unique_labels.shape[0]
-    
+        n_clusters = class_num
+
     kmeans = get_cluster(feature_set=feature_set, n_clusters=n_clusters)
     cluster_set = kmeans.labels_
     # count number of samples for each cluster
     unique_clusters, sample_num_per_cluster, cluster_num_ = \
             get_label_statics(cluster_set)
-    
-    print(n_clusters)
-    print(cluster_num_)
+
     assert n_clusters == cluster_num_, "cluster number doesn't match"
 
+
+
+    print('sampler_num_per_class = {}'.format(sample_num_per_class))
+    print('sampler_num_per_cluster = {}'.format(sample_num_per_cluster))
     # count purity
     purity = 0.
     for i in range(n_clusters):
@@ -83,12 +85,13 @@ def evaluate_clutering(feature_set, label_set, n_clusters=None):
 
     count_cross = np.zeros((n_clusters, class_num))
     for i in range(n_clusters):
-        index_i = np.where(cluster_set == unique_labels[i])
+        index_i = np.where(cluster_set == unique_clusters[i])
         labels_for_cluster_i = label_set[index_i]
         for j in range(class_num):
             index_j = np.where(labels_for_cluster_i == unique_labels[j])
             count_cross[i, j] = index_j[0].shape[0]
 
+    print("count_cross = {}".format(count_cross))
     # mutual information
     I = 0
     for i in range(n_clusters):
@@ -100,6 +103,8 @@ def evaluate_clutering(feature_set, label_set, n_clusters=None):
 
 
     print("Mutual information is {:5.5f}".format(I))
+    print(np.sum(count_cross))
+    print(total_num)
 
     h_cluster = 0
     for i in range(n_clusters):
@@ -112,14 +117,14 @@ def evaluate_clutering(feature_set, label_set, n_clusters=None):
 
 
     h_class = 0
-    for i in range(n_clusters):
-        s = -sample_num_per_cluster[i] / total_num * \
-            np.log(sample_num_per_cluster[i] / total_num)
+    for j in range(class_num):
+        s = -sample_num_per_class[j] / total_num * \
+            np.log(sample_num_per_class[j] / total_num)
 
         h_class += s
 
-    print("Entropy cluster is {:5.5f}".format(I))
-    
+    print("Entropy class is {:5.5f}".format(h_class))
+
     normalized_mutual_information = 2 * I / (h_cluster + h_class)
     print("normalized_mutual_information is {:5.5f}".\
         format(normalized_mutual_information))
@@ -129,19 +134,19 @@ def evaluate_clutering(feature_set, label_set, n_clusters=None):
         if sample_num_per_cluster[i] > 1:
             tp_and_fp += comb(sample_num_per_cluster[i], 2)
 
-
+    print("tp_and_fp = {}".format(tp_and_fp))
     tp = 0
     for i in range(n_clusters):
         for j in range(class_num):
             if count_cross[i,j] > 1:
                 tp += comb(count_cross[i,j], 2)
 
-    print("True positive is {}".format(tp))
-    
+    print("tp = {}".format(tp))
+
     fp = tp_and_fp - tp
 
-    print("False positive is {}".format(fp))
-    
+    print("fp is {}".format(fp))
+
     count = 0
     for j in range(class_num):
         if sample_num_per_class[j] > 1:
@@ -149,17 +154,16 @@ def evaluate_clutering(feature_set, label_set, n_clusters=None):
 
 
     fn = count - tp
-    print("False negative is {}".format(fn))
-    
+    print("fn is {}".format(fn))
+
     tn = comb(total_num, 2) - tp - fp -fn
 
     RI = (tp + tn) / comb(total_num, 2)
     print("RI is {}".format(RI))
 
     precision = tp / (tp + fp)
-    recall = tp / (tp + tn)
+    recall = tp / (tp + fn)
 
-    print(tp, fp, tn, fn)
 
     print("Precision is {}".format(precision))
     print("Recall is {}".format(recall))
@@ -175,20 +179,9 @@ def evaluate_clutering(feature_set, label_set, n_clusters=None):
 
 
 if __name__ == '__main__':
-    feature_set = np.random.random((1000, 100))
-    label_set = np.random.permutation(1000) % 10
-    NMI, RI, F = evaluate_clutering(feature_set, label_set)
-
-
-
-
-
-
-
-
-
-
-
-
+    feature_set = np.random.random((5000, 100))
+    label_set = np.random.permutation(5000) % 10
+    NMI, RI, F = evaluate_clustering(feature_set, label_set)
+    print(NMI, RI, F)
 
 

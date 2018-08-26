@@ -22,9 +22,7 @@ from scipy.spatial import distance
 import cub_2011
 import RetrievalEvaluation
 import evaluate_recall
-
-import cub_2011
-import RetrievalEvaluation
+import evaluate_clustering
 
 class FocalLoss:
     """
@@ -66,7 +64,10 @@ class FocalLoss:
                     'InceptionV3/embedding/Conv2d_1c_1x1/biases',
                     'InceptionV3/embedding/Conv2d_1c_1x1/weights',
                     'InceptionV3/embedding/Conv2d_1d_1x1/biases',
-                    'InceptionV3/embedding/Conv2d_1d_1x1/weights'
+                    'InceptionV3/embedding/Conv2d_1d_1x1/weights',
+                    'InceptionV3/embedding/Conv2d_1e_1x1/biases',
+                    'InceptionV3/embedding/Conv2d_1e_1x1/weights'
+
                 ]):
         """
         initialize the class.
@@ -107,12 +108,13 @@ class FocalLoss:
         self.loss_type = loss_type
         self.focal_decay_factor = focal_decay_factor
 
-        if self.loss_type == 'contrastive_loss':
-            self.ckpt_dir = os.path.join(ckpt_dir, self.network_type,
-                                    self.pair_type, self.loss_type)
-        elif self.loss_type  == 'focal_contrastive_loss':
-            self.ckpt_dir = os.path.join(ckpt_dir, self.network_type,
-                                    self.pair_type, self.loss_type, str(int(self.focal_decay_factor)))
+
+
+        exp_settings = 'lr_' + str(self.learning_rate) + '_' + \
+                'bs_' + str(self.batch_size) + '_' + self.optimimizer
+        self.ckpt_dir = os.path.join(ckpt_dir, self.network_type,
+                                    self.pair_type, self.loss_type, exp_settings)
+
         self.root_dir = root_dir
         self.image_txt = image_txt
         self.train_test_split_txt = train_test_split_txt
@@ -123,7 +125,7 @@ class FocalLoss:
 
         self.is_training = tf.placeholder(tf.bool)
 
-        self.k_set = [1, 2, 4, 8]
+        self.k_set = [1, 2, 4, 8, 16, 32]
         # create iterators
 
         print("Configuration information")
@@ -297,18 +299,22 @@ class FocalLoss:
             with slim.arg_scope([slim.batch_norm, slim.dropout],
                                 is_training=is_training):
                                 # Final pooling and prediction
-                tf.nn.relu
                 with tf.variable_scope('embedding'):
+                    """
                     embedding_vector = slim.conv2d(inputs, 1000, [1, 1], activation_fn=tf.nn.relu,
                                                    normalizer_fn=None, scope='Conv2d_1c_1x1')
 
-                    embedding_vector = slim.conv2d(embedding_vector, embedding_size, [1, 1], activation_fn=None,
+                    embedding_vector = slim.conv2d(embedding_vector, 512, [1, 1], activation_fn=None,
                                                    normalizer_fn=None, scope='Conv2d_1d_1x1')
+                    """
+                    embedding_vector = slim.conv2d(inputs, embedding_size, [1, 1], activation_fn=None,
+                                                   normalizer_fn=None, scope='Conv2d_1e_1x1')
                                                    # weights_initializer=tf.truncated_normal_initializer(stddev=.005))
 
                 if spatial_squeeze:
                     embedding_vector = tf.squeeze(embedding_vector, [1, 2], name='SpatialSqueeze')
 
+                # embedding_vector = tf.nn.l2_normalize(embedding_vector)
         return embedding_vector
 
 
@@ -326,7 +332,9 @@ class FocalLoss:
         # Use 10 times learning rate for last two layers
         scale_factor = 10.
         for idx, (grad, var) in enumerate(grads_and_vars):
-            if "InceptionV3/embedding" in var.name or "InceptionV3/Logits" in var.name:
+            print("***\t"+var.name+"\t******")
+            if "InceptionV3/embedding" in var.name or "InceptionV3/AuxLogits" in var.name:
+            # if "InceptionV3/embedding" in var.name:
                 print("***\t"+var.name+"\t******")
                 grads_and_vars[idx] = (grad*scale_factor, var)
 
@@ -462,6 +470,12 @@ class FocalLoss:
             for i, k in enumerate(self.k_set):
                 print("Recall@{:1d}: {:6.5f}".format(self.k_set[i], recall_k[i]))
 
+            normalized_mutual_information, RI, F = evaluate_clustering.evaluate_clustering(test_feature_set, test_label_set)
+            print("")
+            print("normalized_mutual_information = {}".format(normalized_mutual_information))
+            print("RI = {}".format(RI))
+            print("F_1 = {}".format(F))
+            print("")
 
 
         print(('The NN is {:5.5f}\nThe FT is {:5.5f}\n' +
@@ -526,6 +540,15 @@ class FocalLoss:
 
             for i, k in enumerate(self.k_set):
                 print("Recall@{:1d}: {:6.5f}".format(self.k_set[i], recall_k[i]))
+
+            normalized_mutual_information, RI, F = evaluate_clustering.evaluate_clustering(test_feature_set, test_label_set)
+            print("")
+            print("normalized_mutual_information = {}".format(normalized_mutual_information))
+            print("RI = {}".format(RI))
+            print("F_1 = {}".format(F))
+            print("")
+
+
 
 
 
@@ -717,7 +740,7 @@ class FocalLoss:
                                                         is_training=is_training, reuse=reuse,
                                                         spatial_squeeze=False)
 
-            embedding_vector = self.fc_layer(logits, embedding_size=embedding_size,
+            embedding_vector = self.fc_layer(end_points['AuxLogits'], embedding_size=embedding_size,
                                             is_training=is_training, reuse=reuse,
                                             spatial_squeeze=True)
 
