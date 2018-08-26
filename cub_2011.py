@@ -30,6 +30,39 @@ import random
 slim = tf.contrib.slim
 
 
+def create_dict(img_list, label_list):
+    """
+    args:
+        img_list: [img_path1, img_path2, ...]
+        label_list: [label1, label2, ....]
+    returns:
+        imgs_dict: {1: [...], 2: [...]
+    """
+    assert len(img_list) == len(label_list), \
+            "the number of image and label does not match"
+    img_dict = {}
+    for img, label in zip(img_list, label_list):
+        if label not in img_dict:
+            img_dict[label] = [img]
+        else:
+            img_dict[label].append(img)
+
+    return img_dict, len(img_dict.keys())
+
+
+
+def create_triplet(img_dict, batch_size, class_num):
+    # image dict
+    batch_label = np.random.permutate(class_num)
+    batch_label = batch_label[:batch_size]
+
+
+
+
+
+
+
+
 
 def create_dataset(train_img_list, train_label_list, \
         test_img_list, test_label_list, batch_size):
