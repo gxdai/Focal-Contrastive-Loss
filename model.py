@@ -111,7 +111,7 @@ class FocalLoss:
 
 
         exp_settings = 'lr_' + str(self.learning_rate) + '_' + \
-                'bs_' + str(self.batch_size) + '_' + self.optimimizer
+                'bs_' + str(self.batch_size) + '_' + self.optimizer
         self.ckpt_dir = os.path.join(ckpt_dir, self.network_type,
                                     self.pair_type, self.loss_type, exp_settings)
 
