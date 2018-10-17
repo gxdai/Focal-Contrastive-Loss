@@ -300,16 +300,18 @@ class FocalLoss:
                                 is_training=is_training):
                                 # Final pooling and prediction
                 with tf.variable_scope('embedding'):
-                    """
-                    embedding_vector = slim.conv2d(inputs, 1000, [1, 1], activation_fn=tf.nn.relu,
+                    print("inputs.get_shape().as_list() = {}".format(inputs.get_shape().as_list()))
+                    embedding_vector = slim.conv2d(inputs, 256, [1, 1], activation_fn=tf.nn.relu,
                                                    normalizer_fn=None, scope='Conv2d_1c_1x1')
-
-                    embedding_vector = slim.conv2d(embedding_vector, 512, [1, 1], activation_fn=None,
+                    print("embedding_vector.get_shape().as_list() = {}".format(embedding_vector.get_shape().as_list()))
+                    embedding_vector = slim.conv2d(embedding_vector, 64, [1, 1], activation_fn=tf.nn.relu,
                                                    normalizer_fn=None, scope='Conv2d_1d_1x1')
                     """
-                    embedding_vector = slim.conv2d(inputs, embedding_size, [1, 1], activation_fn=None,
+                    print("embedding_vector.get_shape().as_list() = {}".format(embedding_vector.get_shape().as_list()))
+                    embedding_vector = slim.conv2d(embedding_vector, embedding_size, [1, 1], activation_fn=None,
                                                    normalizer_fn=None, scope='Conv2d_1e_1x1')
                                                    # weights_initializer=tf.truncated_normal_initializer(stddev=.005))
+                    """
 
                 if spatial_squeeze:
                     embedding_vector = tf.squeeze(embedding_vector, [1, 2], name='SpatialSqueeze')
@@ -317,12 +319,11 @@ class FocalLoss:
                 # embedding_vector = tf.nn.l2_normalize(embedding_vector)
         return embedding_vector
 
-
-
     def train(self, sess):
         """
         training process.
         """
+
         learning_rate = self.configure_learning_rate()
         optimizer = self.configure_optimizer(learning_rate)
 
@@ -333,25 +334,30 @@ class FocalLoss:
         scale_factor = 10.
         for idx, (grad, var) in enumerate(grads_and_vars):
             print("***\t"+var.name+"\t******")
-            if "InceptionV3/embedding" in var.name or "InceptionV3/AuxLogits" in var.name:
-            # if "InceptionV3/embedding" in var.name:
+            #if "InceptionV3/embedding" in var.name or "InceptionV3/AuxLogits" in var.name:
+            if "InceptionV3/embedding" in var.name:
                 print("***\t"+var.name+"\t******")
                 grads_and_vars[idx] = (grad*scale_factor, var)
-
+        
         # all the training operations
 
         train_op_ = optimizer.apply_gradients(grads_and_vars)
+        # train_op_ = optimizer.minimize(self.total_loss)
         train_op_with_last_two_layers = optimizer.minimize(loss=self.total_loss, var_list=self.variables_to_train)
         train_op_with_all_layers = optimizer.minimize(loss=self.total_loss, var_list=self.var_list)
         #####
 
-        sess.run(tf.global_variables_initializer())
-        self.init_fn(sess)
+        
         batch_num = int(self.train_img_num / self.batch_size)
 
         model_file = os.path.join(self.ckpt_dir, self.model_name)
         saver = tf.train.Saver()
 
+        sess.run(tf.global_variables_initializer())
+        self.init_fn(sess)
+
+    	self.evaluate_online(sess, test_mode=2)
+        file_writer = tf.summary.FileWriter('./logdir', sess.graph)
         for epoch in range(self.num_epochs):
             sess.run([self.train_init_op, self.train_init_op_])
             batch_idx = 0
@@ -374,6 +380,9 @@ class FocalLoss:
                                                           self.features, self.features_, self.pairwise_distances],
                                                           feed_dict={self.is_training: True})
                     batch_idx += 1
+                    
+                    # summary
+                    file_writer.add_summary(loss_sum_, epoch)
 
                     if batch_idx % self.display_step == 0:
                         print(("{}: Epoch [{:3d}/{:3d}] [{:3d}/{:3d}], total loss: {:6.5f}" +
@@ -401,8 +410,6 @@ class FocalLoss:
             return ckpt
         else:
             return None
-
-
 
     def get_feature_and_label_old(init_op, sess, feature_tensor, label_tensor):
             feature_set = []
@@ -482,9 +489,6 @@ class FocalLoss:
               'The ST is {:5.5f}\nThe DCG is {:5.5f}\n' +
               'The E is {:5.5f}\nThe MAP {:5.5f}\n').format(
                   nn_av, ft_av, st_av, dcg_av, e_av, map_))
-
-
-
 
 
     def evaluate(self, sess, test_mode=2):
@@ -739,8 +743,8 @@ class FocalLoss:
             logits, end_points = inception.inception_v3(inputs, num_classes=num_classes,
                                                         is_training=is_training, reuse=reuse,
                                                         spatial_squeeze=False)
-
-            embedding_vector = self.fc_layer(end_points['AuxLogits'], embedding_size=embedding_size,
+#end_points['AuxLogits'],
+            embedding_vector = self.fc_layer(logits, embedding_size=embedding_size,
                                             is_training=is_training, reuse=reuse,
                                             spatial_squeeze=True)
 
@@ -841,12 +845,22 @@ class FocalLoss:
 
         # positive pair loss
         positive_pair_loss = tf.square(pairwise_distances) * pairwise_similarity_labels
+        positive_pair_num = tf.cast(tf.reduce_sum(pairwise_similarity_labels), tf.float32)
+
         positive_pair_loss = tf.reduce_mean(positive_pair_loss, name='positive_pair_loss')
+        #positive_pair_loss = tf.reduce_sum(positive_pair_loss, name='positive_pair_loss') /\
+        #                     (positive_pair_num + 1e-16)
 
         # negative pair loss
         negative_pair_loss = tf.multiply(tf.square(tf.maximum(tf.subtract(self.margin, \
             pairwise_distances), 0.)), tf.subtract(1., pairwise_similarity_labels))
+        
+        valid_negative_pair_num = tf.reduce_sum(tf.cast(tf.equal(negative_pair_loss, 0.), tf.float32))
+        
+
         negative_pair_loss = tf.reduce_mean(negative_pair_loss, name='negative_pair_loss')
+        #negative_pair_loss = tf.reduce_sum(negative_pair_loss, name='negative_pair_loss') /\
+	#		     (valid_negative_pair_num + 1e-16)
 
         loss = tf.add(positive_pair_loss, negative_pair_loss, name='loss')
 
@@ -908,6 +922,38 @@ class FocalLoss:
         loss = tf.add(positive_pair_loss, negative_pair_loss, name='loss')
 
         return loss, positive_pair_loss, negative_pair_loss, pairwise_similarity_labels
+
+    def triplet_loss(self, pairwise_distances, pairwise_similarity_labels, margin):
+        """
+        formulate triplet loss.
+
+            L(x_a, x_p, x_n) = max{0, margin + |x_a - x_p|^2 - |x_a - x_n|^2}
+
+            where
+                x_a: anchor example.
+                x_p: positive example. 
+                x_n: negative example. 
+        """
+
+        # positive pair loss
+        
+        anchor_positive_distance = tf.expand_dims(pairwise_distances, axis=2)
+        anchor_negative_distance = tf.expand_dims(pairwise_distances, axis=1)
+
+        triplet_loss = margin + anchor_positive_distance - anchor_negative_distance
+
+        i_equal_j = tf.expand_dims(pairwise_similarity_labels, axis=2)
+        i_equal_k = tf.expand_dims(pairwise_similarity_labels, axis=1)
+        
+        mask = tf.logical_and(tf.cast(i_equal_j, tf.bool), tf.logical_not(tf.cast(i_equal_k, tf.bool)))
+
+        triplet_loss = tf.multiply(triplet_loss, mask)
+        triplet_loss = tf.maximum(triplet_loss, margin)
+
+        return triplet_loss 
+
+
+
 
 
 if __name__ == '__main__':

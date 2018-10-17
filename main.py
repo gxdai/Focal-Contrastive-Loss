@@ -15,9 +15,6 @@ import numpy as np
 from datetime import datetime
 import model
 
-
-
-
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--root_dir', type=str, \
@@ -30,6 +27,7 @@ parser.add_argument('--label_txt', type=str, \
         default='/data/Guoxian_Dai/CUB_200_2011/CUB_200_2011/image_class_labels.txt')
 parser.add_argument('--pretrained_model_path', default='./weights/inception_v3.ckpt', type=str)
 
+parser.add_argument('--pair_type', default='vector', type=str)
 parser.add_argument('--mode', default='train', type=str)
 parser.add_argument('--with_regularizer', help='whether to use regularizer for parameters', action='store_true')
 parser.add_argument('--optimizer', default='rmsprop', type=str)
@@ -48,8 +46,6 @@ parser.add_argument('--restore_ckpt', default=0, type=int)      # 1 for True
 parser.add_argument('--evaluation', default=0, type=int)        # 1 for True
 parser.add_argument('--weightFile', default='./models/my-model', type=str)
 parser.add_argument('--ckpt_dir', default='./models/siamese', type=str)
-parser.add_argument('--dn_train', default=20, type=int)
-parser.add_argument('--dn_test', default=5, type=int)
 parser.add_argument('--class_num', default=5, type=int)
 parser.add_argument('--targetNum', default=1000, type=int)
 
@@ -62,6 +58,7 @@ parser.add_argument('--width', default=512, type=int)
 parser.add_argument('--height', default=512, type=int)
 
 parser.add_argument('--embedding_size', default=128, type=int)
+parser.add_argument('--num_epochs_per_decay', default=2, type=int)
 
 args = parser.parse_args()
 
@@ -81,7 +78,9 @@ def main(args):
                                 focal_decay_factor=args.focal_decay_factor,
                                 with_regularizer=args.with_regularizer,
                                 display_step=args.display_step, momentum=args.momentum,
-                                eval_step=args.eval_step, embedding_size=args.embedding_size)
+                                eval_step=args.eval_step, embedding_size=args.embedding_size,
+                                num_epochs_per_decay=args.num_epochs_per_decay,
+                                pair_type=args.pair_type)
 
     config=tf.ConfigProto()
     config.gpu_options.allow_growth = True
@@ -93,25 +92,6 @@ def main(args):
             FocalLoss.evaluate(sess)
 
 
-
 if __name__ == '__main__':
     print("ALL the args information")
-    """
-    print('args.train_dir = {}'.format(args.train_dir))
-    print('args.val_dir = {}'.format(args.val_dir))
-    print('args.model_path = {}'.format(args.model_path))
-    print('args.batch_size = {}'.format(args.batch_size))
-    print('args.num_workers = {}'.format(args.num_workers))
-    print('args.num_epochs1 = {}'.format(args.num_epochs1))
-    print('args.num_epochs2 = {}'.format(args.num_epochs2))
-    print('args.learning_rate1 = {}'.format(args.learning_rate1))
-    print('args.learning_rate2 = {}'.format(args.learning_rate2))
-    print('args.dropout_keep_prob = {}'.format(args.dropout_keep_prob))
-    print('args.restore_ckpt = {}'.format(args.restore_ckpt))
-    print('args.evaluation = {}'.format(args.evaluation))
-    print('args.weightFile = {}'.format(args.weightFile))
-    print('args.ckpt_dir = {}'.format(args.ckpt_dir))
-    print('args.dn_train = {}'.format(args.dn_train))
-    print('args.dn_test = {}'.format(args.dn_test))
-    """
     main(args)
