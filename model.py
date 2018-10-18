@@ -183,6 +183,12 @@ class FocalLoss:
             self.loss, self.positive_pair_loss, self.negative_pair_loss, self.debug_label\
                     = self.contrastive_loss(pairwise_distances, pairwise_similarity_labels)
             self.loss_sum = tf.summary.scalar('loss', self.loss)
+        elif self.loss_type == 'am_contrastive_loss':
+            print("\t\t*Build adaptive margin contrastive loss*")
+            self.loss, self.positive_pair_loss, self.negative_pair_loss, self.debug_label\
+                    = self.adaptive_margin_contrastive_loss(pairwise_distances, pairwise_similarity_labels)
+            self.loss_sum = tf.summary.scalar('loss', self.loss)
+
 
         elif self.loss_type == 'focal_contrastive_loss':
             print("\t\t*Build focal contrastive loss*")
@@ -304,8 +310,12 @@ class FocalLoss:
                     embedding_vector = slim.conv2d(inputs, 256, [1, 1], activation_fn=tf.nn.relu,
                                                    normalizer_fn=None, scope='Conv2d_1c_1x1')
                     print("embedding_vector.get_shape().as_list() = {}".format(embedding_vector.get_shape().as_list()))
-                    embedding_vector = slim.conv2d(embedding_vector, 64, [1, 1], activation_fn=tf.nn.relu,
+                    # embedding_vector = slim.conv2d(embedding_vector, 64, [1, 1], activation_fn=tf.nn.relu,
+                    embedding_vector = slim.conv2d(embedding_vector, 64, [1, 1], activation_fn=None,
                                                    normalizer_fn=None, scope='Conv2d_1d_1x1')
+
+                    print("embedding_vector.get_shape().as_list() = {}".format(embedding_vector.get_shape().as_list()))
+
                     """
                     print("embedding_vector.get_shape().as_list() = {}".format(embedding_vector.get_shape().as_list()))
                     embedding_vector = slim.conv2d(embedding_vector, embedding_size, [1, 1], activation_fn=None,
@@ -866,6 +876,43 @@ class FocalLoss:
 
         return loss, positive_pair_loss, negative_pair_loss, pairwise_similarity_labels
 
+    def adaptive_margin_contrastive_loss(self, pairwise_distances, pairwise_similarity_labels):
+        """
+        formulate constrastive loss.
+
+            L_{ij} = Y_{ij} * d_{ij}^2 + (1 - Y_{ij}) * (max(h - d_{ij}, 0.))^2
+
+            Loss
+
+            where d_{ij} is Euclidean distance for pair (i, j)
+            Y_{ij} is similarity label. 1 for similar pair, 0 for non-similar pair.
+        """
+
+        # positive pair loss
+        positive_pair_loss = tf.square(pairwise_distances) * pairwise_similarity_labels
+        positive_pair_num = tf.cast(tf.reduce_sum(pairwise_similarity_labels), tf.float32)
+
+        positive_pair_loss = tf.reduce_mean(positive_pair_loss, name='positive_pair_loss')
+        #positive_pair_loss = tf.reduce_sum(positive_pair_loss, name='positive_pair_loss') /\
+        #                     (positive_pair_num + 1e-16)
+
+        # negative pair loss
+        adaptive_margin = self.margin * (1.0 + tf.exp(tf.maximum(pairwise_distances - self.margin, 0.))) / 2. 
+        negative_pair_loss = tf.multiply(tf.square(tf.maximum(tf.subtract(adpative_margin, \
+            pairwise_distances), 0.)), tf.subtract(1., pairwise_similarity_labels))
+        
+        valid_negative_pair_num = tf.reduce_sum(tf.cast(tf.equal(negative_pair_loss, 0.), tf.float32))
+        
+
+        negative_pair_loss = tf.reduce_mean(negative_pair_loss, name='negative_pair_loss')
+        #negative_pair_loss = tf.reduce_sum(negative_pair_loss, name='negative_pair_loss') /\
+	#		     (valid_negative_pair_num + 1e-16)
+
+        loss = tf.add(positive_pair_loss, negative_pair_loss, name='loss')
+
+        return loss, positive_pair_loss, negative_pair_loss, pairwise_similarity_labels
+
+ 
     def focal_contrastive_loss(self, pairwise_distances,
                                 pairwise_similarity_labels,
                                 focal_decay_factor=1.,
