@@ -28,6 +28,15 @@ elif [ $(hostname) = 'institute01' ];  then
     LABEL_TXT="/raid/Guoxian_Dai/cub_2011/CUB_200_2011/image_class_labels.txt"
     LEARNING_RATE=0.001
     PYTHON=py_gxdai
+elif [ $(hostname) = 'uranus' ];  then
+    # running code on the dgx1
+
+    ROOT_DIR="/data1/Guoxian_Dai/CUB_200_2011/images"
+    IMAGE_TXT="/data1/Guoxian_Dai/CUB_200_2011/images.txt"
+    TRAIN_TEST_SPLIT_TXT="/data1/Guoxian_Dai/CUB_200_2011/train_test_split.txt"
+    LABEL_TXT="/data1/Guoxian_Dai/CUB_200_2011/image_class_labels.txt"
+    LEARNING_RATE=0.001
+    PYTHON=py_gxdai
 elif [ $(hostname) = 'gxdai-Precision-7920-Tower' ];  then
     # running code on the dgx1
 

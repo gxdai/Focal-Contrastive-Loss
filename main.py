@@ -11,6 +11,10 @@ import time
 import random
 import numpy as np
 
+
+
+tf.set_random_seed(22222)
+
 # from utils import *
 from datetime import datetime
 import model
@@ -40,8 +44,9 @@ parser.add_argument('--num_epochs2', default=10, type=int)
 parser.add_argument('--learning_rate', default=1e-2, type=float)
 parser.add_argument('--momentum', default=1e-2, type=float)
 parser.add_argument('--learning_rate2', default=1e-4, type=float)
-parser.add_argument('--dropout_keep_prob', default=0.5, type=float)
-parser.add_argument('--weight_decay', default=5e-4, type=float)
+parser.add_argument('--dropout_keep_prob', default=0.5, type=float) 
+
+parser.add_argument('--weight_decay', default=5e-4, type=float) 
 parser.add_argument('--restore_ckpt', default=0, type=int)      # 1 for True
 parser.add_argument('--evaluation', default=0, type=int)        # 1 for True
 parser.add_argument('--weightFile', default='./models/my-model', type=str)

@@ -365,8 +365,7 @@ class FocalLoss:
 
         sess.run(tf.global_variables_initializer())
         self.init_fn(sess)
-
-    	self.evaluate_online(sess, test_mode=2)
+        self.evaluate_online(sess, test_mode=2)
         file_writer = tf.summary.FileWriter('./logdir', sess.graph)
         for epoch in range(self.num_epochs):
             sess.run([self.train_init_op, self.train_init_op_])
