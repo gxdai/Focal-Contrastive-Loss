@@ -29,14 +29,15 @@ elif [ $(hostname) = 'institute01' ];  then
     LEARNING_RATE=0.001
     PYTHON=py_gxdai
 elif [ $(hostname) = 'uranus' ];  then
-    # running code on the dgx1
+    echo "running code on the uranus"
 
     ROOT_DIR="/data1/Guoxian_Dai/CUB_200_2011/images"
     IMAGE_TXT="/data1/Guoxian_Dai/CUB_200_2011/images.txt"
     TRAIN_TEST_SPLIT_TXT="/data1/Guoxian_Dai/CUB_200_2011/train_test_split.txt"
     LABEL_TXT="/data1/Guoxian_Dai/CUB_200_2011/image_class_labels.txt"
-    LEARNING_RATE=0.001
+    LEARNING_RATE=0.0001
     PYTHON=py_gxdai
+
 elif [ $(hostname) = 'gxdai-Precision-7920-Tower' ];  then
     # running code on the dgx1
 
@@ -54,20 +55,20 @@ LOSS_TYPE=$3
 
 CUDA_VISIBLE_DEVICES=$GPU_ID $PYTHON main.py \
                         --mode $MODE \
-                        --optimizer "rmsprop" \
+                        --optimizer "momentum" \
                         --batch_size 32 \
                         --momentum 0.9 \
                         --learning_rate $LEARNING_RATE \
-                        --learning_rate_decay_type "exponential" \
+                        --learning_rate_decay_type "fixed" \
                         --loss_type $LOSS_TYPE \
                         --margin 1.0 \
                         --root_dir $ROOT_DIR \
                         --image_txt $IMAGE_TXT \
                         --train_test_split_txt $TRAIN_TEST_SPLIT_TXT \
                         --label_txt $LABEL_TXT \
-                        --focal_decay_factor "2.0" \
+                        --focal_decay_factor "1000000000.0" \
                         --display_step 20 \
-                        --eval_step 10 \
+                        --eval_step 50 \
                         --embedding_size 128 \
                         --num_epochs_per_decay 5
                         #--with_regularizer
