@@ -753,7 +753,9 @@ class FocalLoss:
                                                         is_training=is_training, reuse=reuse,
                                                         spatial_squeeze=False)
 #end_points['AuxLogits'],
-            embedding_vector = self.fc_layer(logits, embedding_size=embedding_size,
+
+        # move fc layer out of slim.arg_scope()
+        embedding_vector = self.fc_layer(logits, embedding_size=embedding_size,
                                             is_training=is_training, reuse=reuse,
                                             spatial_squeeze=True)
 

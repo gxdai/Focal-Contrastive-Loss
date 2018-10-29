@@ -55,7 +55,7 @@ LOSS_TYPE=$3
 
 CUDA_VISIBLE_DEVICES=$GPU_ID $PYTHON main.py \
                         --mode $MODE \
-                        --optimizer "momentum" \
+                        --optimizer "rmsprop" \
                         --batch_size 32 \
                         --momentum 0.9 \
                         --learning_rate $LEARNING_RATE \
@@ -70,11 +70,14 @@ CUDA_VISIBLE_DEVICES=$GPU_ID $PYTHON main.py \
                         --display_step 20 \
                         --eval_step 50 \
                         --embedding_size 128 \
-                        --num_epochs_per_decay 5
+                        --num_epochs_per_decay 5 > ${LOSS_TYPE}.txt 2>&1
                         #--with_regularizer
 
 
-
+# Explannation for 2 and 1, file descriptor
+# 2: stderr
+# 1: stdout
+# >file 2>&1: we are doing redirecting stdout 1 to file, meanwhile redirecting stderr 2 to the same place as stdout 1
 
 
 if [ 0 -eq 1 ]; then
